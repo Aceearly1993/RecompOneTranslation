@@ -53,8 +53,8 @@ public sealed partial class Gpu
 
         if (HleOn)
         {
-            HleTri(v[0], v[1], v[2], tex, semi, raw, clut);
-            if (quad) HleTri(v[1], v[2], v[3], tex, semi, raw, clut);
+            HleTri(v[0], v[1], v[2], tex, gouraud, semi, raw, clut);
+            if (quad) HleTri(v[1], v[2], v[3], tex, gouraud, semi, raw, clut);
         }
         else
         {
@@ -119,7 +119,7 @@ public sealed partial class Gpu
                     if (!raw) { tr = tr * r >> 7; tg = tg * g >> 7; tb = tb * bl >> 7; }
                     Plot(x, y, tr, tg, tb, semi && stp, ditherTex, stp);
                 }
-                else Plot(x, y, r, g, bl, semi, _dither);
+                else Plot(x, y, r, g, bl, semi, _dither && gouraud);
             }
         }
     }
@@ -189,7 +189,7 @@ public sealed partial class Gpu
         if (gouraud) { uint cw = _fifo[idx++]; r1 = (int)(cw & 0xFF); g1 = (int)((cw >> 8) & 0xFF); b1 = (int)((cw >> 16) & 0xFF); }
         uint v1w = _fifo[idx++];
 
-        LineSegment(CoordX(v0w), CoordY(v0w), r0, g0, b0, CoordX(v1w), CoordY(v1w), r1, g1, b1, semi);
+        LineSegment(CoordX(v0w), CoordY(v0w), r0, g0, b0, CoordX(v1w), CoordY(v1w), r1, g1, b1, semi, gouraud);
     }
 
     void ExecutePolyline()
@@ -213,14 +213,14 @@ public sealed partial class Gpu
 
         for (int i = 0; i + 1 < pts.Count; i++)
             LineSegment(pts[i].X, pts[i].Y, pts[i].R, pts[i].G, pts[i].B,
-                        pts[i + 1].X, pts[i + 1].Y, pts[i + 1].R, pts[i + 1].G, pts[i + 1].B, semi);
+                        pts[i + 1].X, pts[i + 1].Y, pts[i + 1].R, pts[i + 1].G, pts[i + 1].B, semi, gouraud);
     }
 
-    void LineSegment(int x0, int y0, int r0, int g0, int b0, int x1, int y1, int r1, int g1, int b1, bool semi)
+    void LineSegment(int x0, int y0, int r0, int g0, int b0, int x1, int y1, int r1, int g1, int b1, bool semi, bool gouraud)
     {
         x0 += _drawOffsetX; y0 += _drawOffsetY;
         x1 += _drawOffsetX; y1 += _drawOffsetY;
-        if (HleOn) { HleLine(x0, y0, r0, g0, b0, x1, y1, r1, g1, b1, semi); return; }
+        if (HleOn) { HleLine(x0, y0, r0, g0, b0, x1, y1, r1, g1, b1, semi, gouraud); return; }
         int dx = Math.Abs(x1 - x0), dy = Math.Abs(y1 - y0);
         int steps = Math.Max(dx, dy);
         if (steps == 0) { Plot(x0, y0, r0, g0, b0, semi, _dither); return; }

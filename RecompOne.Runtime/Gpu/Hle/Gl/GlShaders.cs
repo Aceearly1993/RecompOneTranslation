@@ -69,6 +69,7 @@ internal static class GlShaders
         flat out ivec2 clutBase;
         flat out ivec2 pageBase;
         flat out int   texMode;
+        flat out int   vDither;
 
         uniform vec2 uVertexOffset;
         uniform vec2 uPosBias;
@@ -79,6 +80,7 @@ internal static class GlShaders
             gl_Position = vec4(p, 0.0, 1.0);
 
             vColor = vec4(float(inColor & 0xFFu), float((inColor >> 8) & 0xFFu), float((inColor >> 16) & 0xFFu), 0.0) / 255.0;
+            vDither = (inTexpage >> 10) & 1;
 
             if ((inTexpage & 0x8000) != 0) {
                 texMode = 4;
@@ -98,6 +100,7 @@ internal static class GlShaders
         flat in ivec2 clutBase;
         flat in ivec2 pageBase;
         flat in int   texMode;
+        flat in int   vDither;
 
         layout(location = 0, index = 0) out vec4 FragColor;
         layout(location = 0, index = 1) out vec4 BlendColor;
@@ -110,6 +113,13 @@ internal static class GlShaders
         uniform float uSetMask;
         uniform int   uCheckMask;
         uniform int   uScale;
+        uniform vec2  uPosBias;
+
+        const int ditherTbl[16] = int[16](
+            -4,  0, -3,  1,
+             2, -2,  3, -1,
+            -3,  1, -4,  0,
+             3, -1,  2, -2 );
 
         int u5(float f) { return int(floor(f * 31.0 + 0.5)); }
         vec4 fetch(ivec2 c) { return texelFetch(uVram, (c & ivec2(1023, 511)) * uScale, 0); }
@@ -117,13 +127,19 @@ internal static class GlShaders
             vec4 p = fetch(c);
             return u5(p.r) | (u5(p.g) << 5) | (u5(p.b) << 10) | (int(ceil(p.a)) << 15);
         }
-        vec4 modulate(vec4 tex, vec4 col) { vec4 r = (tex * col) / (128.0 / 255.0); r.a = 1.0; return r; }
+        vec3 quant5(ivec3 c8) {
+            if (vDither != 0) {
+                ivec2 vp = ivec2(floor(gl_FragCoord.xy / float(uScale) - uPosBias));
+                c8 = clamp(c8 + ditherTbl[(vp.y & 3) * 4 + (vp.x & 3)], 0, 255);
+            }
+            return vec3(min(c8 >> 3, 31)) / 31.0;
+        }
 
         void main() {
             if (uCheckMask != 0 && texelFetch(uDest, ivec2(gl_FragCoord.xy), 0).a >= 0.5) discard;
 
             if (texMode == 4) {
-                FragColor = vec4(vColor.rgb, uSetMask);
+                FragColor = vec4(quant5(ivec3(vColor.rgb * 255.0 + 0.5)), uSetMask);
                 BlendColor = uBlend;
                 return;
             }
@@ -147,7 +163,9 @@ internal static class GlShaders
             }
 
             if (texel.rgb == vec3(0.0) && texel.a < 0.5) discard;
-            FragColor = vec4(modulate(texel, vColor).rgb, max(texel.a, uSetMask));
+            ivec3 t8 = ivec3(texel.rgb * 31.0 + 0.5) << 3;
+            ivec3 c8 = (t8 * ivec3(vColor.rgb * 255.0 + 0.5)) >> 7;
+            FragColor = vec4(quant5(c8), max(texel.a, uSetMask));
             BlendColor = texel.a >= 0.5 ? uBlend : uBlendOpaque;
         }
         """;

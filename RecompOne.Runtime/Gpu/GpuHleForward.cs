@@ -21,12 +21,12 @@ public sealed partial class Gpu
         X = v.X, Y = v.Y, R = (byte)v.R, G = (byte)v.G, B = (byte)v.B, U = (short)v.U, V = (short)v.V,
     };
 
-    PrimFlags PrimOf(bool tex, bool semi, bool raw, int clut) => new()
+    PrimFlags PrimOf(bool tex, bool semi, bool raw, int clut, bool gouraud = false) => new()
     {
-        Textured = tex, SemiTrans = semi, RawTexture = raw, TPage = (ushort)CurTPage(), Clut = (ushort)clut,
+        Textured = tex, SemiTrans = semi, RawTexture = raw, Gouraud = gouraud, TPage = (ushort)CurTPage(), Clut = (ushort)clut,
     };
 
-    void HleTri(in Vert a, in Vert b, in Vert c, bool tex, bool semi, bool raw, int clut)
+    void HleTri(in Vert a, in Vert b, in Vert c, bool tex, bool gouraud, bool semi, bool raw, int clut)
     {
         int spanX = Math.Max(a.X, Math.Max(b.X, c.X)) - Math.Min(a.X, Math.Min(b.X, c.X));
         int spanY = Math.Max(a.Y, Math.Max(b.Y, c.Y)) - Math.Min(a.Y, Math.Min(b.Y, c.Y));
@@ -34,7 +34,7 @@ public sealed partial class Gpu
 
         var be = GpuHle.Backend!;
         be.SetDrawEnv(CurEnv());
-        be.DrawTri(HV(a), HV(b), HV(c), PrimOf(tex, semi, raw, clut));
+        be.DrawTri(HV(a), HV(b), HV(c), PrimOf(tex, semi, raw, clut, gouraud));
     }
 
     void HleRect(int x, int y, int w, int h, int u, int v, int clut, int r, int g, int b, bool tex, bool semi, bool raw)
@@ -45,7 +45,7 @@ public sealed partial class Gpu
             PrimOf(tex, semi, raw, clut));
     }
 
-    void HleLine(int x0, int y0, int r0, int g0, int b0, int x1, int y1, int r1, int g1, int b1, bool semi)
+    void HleLine(int x0, int y0, int r0, int g0, int b0, int x1, int y1, int r1, int g1, int b1, bool semi, bool gouraud)
     {
         if (Math.Abs(x1 - x0) > 1023 || Math.Abs(y1 - y0) > 511) return;
 
@@ -54,7 +54,7 @@ public sealed partial class Gpu
         be.DrawLine(
             new HleVertex { X = x0, Y = y0, R = (byte)r0, G = (byte)g0, B = (byte)b0 },
             new HleVertex { X = x1, Y = y1, R = (byte)r1, G = (byte)g1, B = (byte)b1 },
-            PrimOf(false, semi, false, 0));
+            PrimOf(false, semi, false, 0, gouraud));
     }
 
     void HleFill(int x, int y, int w, int h, ushort color) => GpuHle.Backend!.FillRect(x, y, w, h, color);

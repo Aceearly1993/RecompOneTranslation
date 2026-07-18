@@ -260,15 +260,19 @@ public sealed class GlBackend : IGpuBackend
         _kClipX0 = _env.ClipX0; _kClipY0 = _env.ClipY0; _kClipX1 = _env.ClipX1; _kClipY1 = _env.ClipY1;
     }
 
-    GlVertex V(in HleVertex v, in PrimFlags f)
+    bool DitherOf(in PrimFlags f) => _env.Dither && (f.Gouraud || (f.Textured && !f.RawTexture));
+
+    GlVertex V(in HleVertex v, in PrimFlags f, bool dither)
     {
         uint color = (f.Textured && f.RawTexture) ? 0x808080u : (uint)(v.R | (v.G << 8) | (v.B << 16));
+        int tpage = f.Textured ? (f.TPage & 0x1FF) : 0x8000;
+        if (dither) tpage |= 0x400;
         return new GlVertex
         {
             X = v.X, Y = v.Y,
             Color = color,
             Clut = f.Clut & 0x7FFF,
-            Texpage = f.Textured ? (f.TPage & 0x1FF) : 0x8000,
+            Texpage = tpage,
             U = v.U, V = v.V,
         };
     }
@@ -276,7 +280,8 @@ public sealed class GlBackend : IGpuBackend
     public void DrawTri(in HleVertex a, in HleVertex b, in HleVertex c, in PrimFlags f)
     {
         Begin(f, 3);
-        _verts[_count++] = V(a, f); _verts[_count++] = V(b, f); _verts[_count++] = V(c, f);
+        bool dith = DitherOf(f);
+        _verts[_count++] = V(a, f, dith); _verts[_count++] = V(b, f, dith); _verts[_count++] = V(c, f, dith);
     }
 
     public void DrawRect(in HleRect r, in PrimFlags f)
@@ -286,21 +291,22 @@ public sealed class GlBackend : IGpuBackend
         var b = new HleVertex { X = r.X + r.W, Y = r.Y, R = r.R, G = r.G, B = r.B, U = (short)(r.U + r.W), V = r.V };
         var c = new HleVertex { X = r.X, Y = r.Y + r.H, R = r.R, G = r.G, B = r.B, U = r.U, V = (short)(r.V + r.H) };
         var d = new HleVertex { X = r.X + r.W, Y = r.Y + r.H, R = r.R, G = r.G, B = r.B, U = (short)(r.U + r.W), V = (short)(r.V + r.H) };
-        _verts[_count++] = V(a, f); _verts[_count++] = V(b, f); _verts[_count++] = V(c, f);
-        _verts[_count++] = V(b, f); _verts[_count++] = V(d, f); _verts[_count++] = V(c, f);
+        _verts[_count++] = V(a, f, false); _verts[_count++] = V(b, f, false); _verts[_count++] = V(c, f, false);
+        _verts[_count++] = V(b, f, false); _verts[_count++] = V(d, f, false); _verts[_count++] = V(c, f, false);
     }
 
     public void DrawLine(in HleVertex a, in HleVertex b, in PrimFlags f)
     {
         Begin(f, 6);
+        bool dith = _env.Dither;
         float x1 = a.X, y1 = a.Y;
         float x2 = b.X, y2 = b.Y;
         float dx = x2 - x1, dy = y2 - y1;
 
         if (dx == 0 && dy == 0)
         {
-            LineVert(x1, y1, a, f); LineVert(x1 + 1, y1, a, f); LineVert(x1 + 1, y1 + 1, a, f);
-            LineVert(x1 + 1, y1 + 1, a, f); LineVert(x1, y1 + 1, a, f); LineVert(x1, y1, a, f);
+            LineVert(x1, y1, a, f, dith); LineVert(x1 + 1, y1, a, f, dith); LineVert(x1 + 1, y1 + 1, a, f, dith);
+            LineVert(x1 + 1, y1 + 1, a, f, dith); LineVert(x1, y1 + 1, a, f, dith); LineVert(x1, y1, a, f, dith);
             return;
         }
 
@@ -308,14 +314,14 @@ public sealed class GlBackend : IGpuBackend
         if (Math.Abs(dx) > Math.Abs(dy)) { xo = 0; yo = 1; if (dx > 0) x2++; else x1++; }
         else { xo = 1; yo = 0; if (dy > 0) y2++; else y1++; }
 
-        LineVert(x1, y1, a, f); LineVert(x2, y2, b, f); LineVert(x2 + xo, y2 + yo, b, f);
-        LineVert(x2 + xo, y2 + yo, b, f); LineVert(x1 + xo, y1 + yo, a, f); LineVert(x1, y1, a, f);
+        LineVert(x1, y1, a, f, dith); LineVert(x2, y2, b, f, dith); LineVert(x2 + xo, y2 + yo, b, f, dith);
+        LineVert(x2 + xo, y2 + yo, b, f, dith); LineVert(x1 + xo, y1 + yo, a, f, dith); LineVert(x1, y1, a, f, dith);
     }
 
-    void LineVert(float x, float y, in HleVertex src, in PrimFlags f)
+    void LineVert(float x, float y, in HleVertex src, in PrimFlags f, bool dither)
     {
         var v = src; v.X = x; v.Y = y;
-        _verts[_count++] = V(v, f);
+        _verts[_count++] = V(v, f, dither);
     }
 
     public void FillRect(int x, int y, int w, int h, ushort color15)

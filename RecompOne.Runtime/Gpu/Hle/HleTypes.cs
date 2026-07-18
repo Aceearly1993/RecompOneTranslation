@@ -11,7 +11,7 @@ public struct HleVertex
 
 public struct PrimFlags
 {
-    public bool Textured, SemiTrans, RawTexture;
+    public bool Textured, SemiTrans, RawTexture, Gouraud;
     public ushort TPage; 
     public ushort Clut; 
     public int OtIndex;
