@@ -89,7 +89,9 @@ public static class BiosB
         if (_padBuf == 0) return;
         ushort s = Hardware.Controller.State;
         ushort swapped = (ushort)((s >> 8) | (s << 8));
-        m.WriteU32(_padBuf,     0xFFFF0000u | swapped);
+        ushort s2 = Hardware.Controller.State2;
+        ushort swapped2 = (ushort)((s2 >> 8) | (s2 << 8));
+        m.WriteU32(_padBuf,     ((uint)swapped2 << 16) | swapped);
         m.WriteU8(_padBuf + 4, Hardware.Controller.RightX);
         m.WriteU8(_padBuf + 5, Hardware.Controller.RightY);
         m.WriteU8(_padBuf + 6, Hardware.Controller.LeftX);
