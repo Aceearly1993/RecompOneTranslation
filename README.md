@@ -9,6 +9,8 @@ RecompOne is a tool to statically recompile PlayStation 1 executables into C# co
 
 This project is inspired by [N64Recomp](https://github.com/N64Recomp/N64Recomp) and [XenonRecomp](https://github.com/hedge-dev/XenonRecomp), which are similar tools for N64 and Xbox 360 respectively
 
+We have a discord server too: https://discord.gg/65g8ZEPnbR
+
 ## How it works
 
 Static recompilation is similar to emulation in that it recreates the internal state of the hardware, the difference is that instead of fetching, decoding, and executing each instruction at runtime, the recompiler translates all MIPS operations into code ahead of time.
@@ -66,8 +68,6 @@ The recompiler reads the disc image provided in the configuration file, gets the
 
 
 ## TODO
-
-- [ ] **Mod loader** an proper runtime modding system that patch assemblies from a `mods/` directory without recompiling
 - [ ] **MultiDisc games** current implementation doesnt deal with games that have multiple discs (should be an relatively easy implementation)
 
 ## Contributing
