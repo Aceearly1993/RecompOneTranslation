@@ -35,6 +35,9 @@ public static class Runtime
     }
 
     public static void WaitForValidDisc() => HostWindow.WaitForValidDisc();
+    
+    public static void ShowNotice(string message) => Host.Window.NoticePopup.Show(message);
+    public static void SetStartupNotice(string message, string title = "Notice", string ackKey = "StartupNoticeAck") => Host.Window.StartupNotice.Set(message, title, ackKey);
 
     public static void SetContext(CpuContext c, IMemory m)
     {

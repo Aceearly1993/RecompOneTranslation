@@ -117,6 +117,15 @@ internal static class HostWindow
     public static void WaitForValidDisc() // wait for disc path to be valid before running it!!
     {
         if (_headless || _window == null) return;
+
+        while (StartupNotice.NeedsAck)
+        {
+            try { _window.DoEvents(); } catch { }
+            if (_window.IsClosing) { Runtime.Shutdown(); Environment.Exit(0); }
+            InputManager.Poll();
+            _window.DoRender();
+        }
+
         while (true)
         {
             var path = ConfigManager.Game.CdPath;
@@ -245,6 +254,8 @@ internal static class HostWindow
         PanelManager.DrawPanels();
         MenuRegistry.DrawWindows();
         Modding.ModLoadingPopup.Draw();
+        NoticePopup.Draw();
+        if (StartupNotice.NeedsAck) StartupNotice.Draw();
         gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
         gl.Viewport(0, 0, (uint)fbDef.X, (uint)fbDef.Y);
         _imgui.Render();

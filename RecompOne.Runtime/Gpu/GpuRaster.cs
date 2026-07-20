@@ -62,7 +62,7 @@ public sealed partial class Gpu
             if (quad) RasterTriangle(v[1], v[2], v[3], tex, gouraud, semi, raw, clut);
         }
     }
-
+    
     void RasterTriangle(Vert a, Vert b, Vert c, bool tex, bool gouraud, bool semi, bool raw, int clut)
     {
         int spanX = Math.Max(a.X, Math.Max(b.X, c.X)) - Math.Min(a.X, Math.Min(b.X, c.X));

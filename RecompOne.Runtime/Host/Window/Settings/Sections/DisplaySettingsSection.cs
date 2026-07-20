@@ -25,8 +25,9 @@ internal sealed class DisplaySettingsSection : ISettingsSection
             ConfigManager.View.NativeResolution = native;
             Hle.GpuHle.NativeResolution = native;
             ConfigManager.SaveView(PanelManager.Panels);
+            NoticePopup.Show("You need to restart the application to apply this configuration");
         }
         if (ConfigManager.View.NativeResolution != (Hle.GlVram.Scale == 1))
-            ImGui.TextDisabled("restartis required");
+            ImGui.TextDisabled("restart is required");
     }
 }
