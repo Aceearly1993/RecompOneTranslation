@@ -4,13 +4,15 @@ namespace RecompOne.Runtime.Host.Window;
 
 public static class MenuRegistry
 {
-    static readonly List<(string Label, Action Draw)> _menus = [];
+    static readonly List<(string Label, Action Draw, string? Parent)> _menus = [];
     static readonly List<Action> _windows = [];
 
-    public static void Register(string label, Action drawItems)
+    public static void Register(string label, Action drawItems) => Register(label, drawItems, null);
+
+    public static void Register(string label, Action drawItems, string? parent)
     {
         if (string.IsNullOrEmpty(label) || drawItems == null) return;
-        _menus.Add((label, drawItems));
+        _menus.Add((label, drawItems, parent));
     }
 
     public static void RegisterWindow(Action draw)
@@ -21,10 +23,26 @@ public static class MenuRegistry
 
     internal static void DrawMenus()
     {
-        foreach (var (label, draw) in _menus)
+        foreach (var (label, draw, parent) in _menus)
         {
+            if (parent != null) continue;
             if (!ImGui.BeginMenu(label)) continue;
             draw();
+            ImGui.EndMenu();
+        }
+
+        var seen = new HashSet<string>();
+        foreach (var (_, _, parent) in _menus)
+        {
+            if (parent == null || !seen.Add(parent)) continue;
+            if (!ImGui.BeginMenu(parent)) continue;
+            foreach (var (label, draw, p) in _menus)
+            {
+                if (p != parent) continue;
+                if (!ImGui.BeginMenu(label)) continue;
+                draw();
+                ImGui.EndMenu();
+            }
             ImGui.EndMenu();
         }
     }

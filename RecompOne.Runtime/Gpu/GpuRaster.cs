@@ -1,9 +1,13 @@
+using RecompOne.Runtime.Events;
+
 namespace RecompOne.Runtime;
 
 //old soft raster
 public sealed partial class Gpu
 {
     struct Vert { public int X, Y, R, G, B, U, V; }
+
+    static readonly RenderPrimEvent _primEvent = new();
 
     static readonly int[,] Dither =
     {
@@ -49,6 +53,19 @@ public sealed partial class Gpu
                 if (i == 0) clut = (int)((uvw >> 16) & 0xFFFF);
                 else if (i == 1) SetTexpageFromWord((uvw >> 16) & 0xFFFF);
             }
+        }
+        //dispatch the render event for prims
+        if (Event.HasAnyListeners<RenderPrimEvent>())
+        {
+            var e = _primEvent;
+            e.Context = Runtime.Cpu!; e.Memory = Runtime.Mem!;
+            e.Count = n;
+            for (int i = 0; i < n; i++) { e.X[i] = v[i].X; e.Y[i] = v[i].Y; }
+            e.DrawLeft = _drawAreaLeft; e.DrawRight = _drawAreaRight; e.DrawTop = _drawAreaTop; e.DrawBottom = _drawAreaBottom;
+            e.Textured = tex; e.SemiTransparent = semi; e.Gouraud = gouraud; e.Raw = raw; e.Clut = clut; e.TexPage = 0; e.Skip = false;
+            Event.Dispatch(e);
+            if (e.Skip) return;
+            for (int i = 0; i < n; i++) { v[i].X = e.X[i]; v[i].Y = e.Y[i]; }
         }
 
         if (HleOn)
@@ -155,7 +172,19 @@ public sealed partial class Gpu
         int w, h;
         if (sz == 0) { uint wh = _fifo[idx]; w = (int)(wh & 0xFFFF); h = (int)((wh >> 16) & 0xFFFF); }
         else { w = h = sz == 1 ? 1 : sz == 2 ? 8 : 16; }
-
+        //dispatch event
+        if (Event.HasAnyListeners<RenderPrimEvent>())
+        {
+            var e = _primEvent;
+            e.Context = Runtime.Cpu!; e.Memory = Runtime.Mem!;
+            e.Count = 2;
+            e.X[0] = x; e.X[1] = x + w; e.Y[0] = y; e.Y[1] = y + h;
+            e.DrawLeft = _drawAreaLeft; e.DrawRight = _drawAreaRight; e.DrawTop = _drawAreaTop; e.DrawBottom = _drawAreaBottom;
+            e.Textured = tex; e.SemiTransparent = semi; e.Gouraud = false; e.Raw = raw; e.Clut = clut; e.TexPage = 0; e.Skip = false;
+            Event.Dispatch(e);
+            if (e.Skip) return;
+            x = e.X[0]; w = e.X[1] - e.X[0];
+        }
         if (HleOn) { HleRect(x, y, w, h, u0, v0, clut, cr, cg, cb, tex, semi, raw); return; }
 
         for (int dy = 0; dy < h; dy++)

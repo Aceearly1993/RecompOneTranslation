@@ -32,7 +32,7 @@ internal static class StartupNotice
                 ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoDocking |
                 ImGuiWindowFlags.NoSavedSettings))
         {
-            ImGui.TextWrapped(_message);
+            UiText.CenteredWrapped(_message);
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();

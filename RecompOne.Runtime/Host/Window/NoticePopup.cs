@@ -35,7 +35,7 @@ internal static class NoticePopup
                 ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove |
                 ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoTitleBar))
         {
-            ImGui.TextWrapped(_message);
+            UiText.CenteredWrapped(_message); //looks more pretty
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
