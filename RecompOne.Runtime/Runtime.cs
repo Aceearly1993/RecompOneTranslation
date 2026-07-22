@@ -1,4 +1,5 @@
 using RecompOne.Runtime.Context;
+using RecompOne.Runtime.Events;
 using RecompOne.Runtime.Host;
 using RecompOne.Runtime.Memory;
 
@@ -32,6 +33,10 @@ public static class Runtime
         HostWindow.Initialize(title);
         Audio.Initialize();
         Audio.SetMasterVolume(Config.ConfigManager.Game.Muted ? 0f : Config.ConfigManager.Game.MasterVolume);
+        if (Event.HasAnyListeners<RuntimeReadyEvent>())
+        {
+            Event.Dispatch(new RuntimeReadyEvent());
+        }
     }
 
     public static void WaitForValidDisc() => HostWindow.WaitForValidDisc();

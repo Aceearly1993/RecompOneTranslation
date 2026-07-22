@@ -1,13 +1,21 @@
+using System.Numerics;
 using Silk.NET.Input;
 using Silk.NET.SDL;
 using RecompOne.Runtime.Config;
 using RecompOne.Runtime.Hardware;
+using EventBus = RecompOne.Runtime.Events.Event;
+using KeyboardEvent = RecompOne.Runtime.Events.KeyboardEvent;
+using MouseEvent = RecompOne.Runtime.Events.MouseEvent;
+using ControllerEvent = RecompOne.Runtime.Events.ControllerEvent;
+using MouseAction = RecompOne.Runtime.Events.MouseAction;
+using EvMouseButton = RecompOne.Runtime.Events.MouseButton;
 
 namespace RecompOne.Runtime.Host;
 
 internal static unsafe class InputManager
 {
     static IKeyboard?_keyboard;
+    static IMouse?_mouse;
     static Sdl?_sdl;
     static GameController* _pad0;
     static GameController* _pad1;
@@ -37,9 +45,19 @@ internal static unsafe class InputManager
         {
             _keyboard = input.Keyboards[0];
             _keyboard.KeyDown += OnKeyDown;
+            _keyboard.KeyUp += OnKeyUp;
         }
-        
-        
+
+        if (input.Mice.Count > 0)
+        {
+            _mouse = input.Mice[0];
+            _mouse.MouseMove += OnMouseMove;
+            _mouse.MouseDown += OnMouseDown;
+            _mouse.MouseUp += OnMouseUp;
+            _mouse.Scroll += OnScroll;
+        }
+
+
         try
         {
             _sdl = Sdl.GetApi();
@@ -103,12 +121,28 @@ internal static unsafe class InputManager
     static void PollGamepadEvents()
     {
         if (_sdl == null) return;
-        Event ev;
+        Silk.NET.SDL.Event ev;
         bool changed = false;
+        bool anyCtrl = EventBus.HasAnyListeners<ControllerEvent>();
         while (_sdl.PollEvent(&ev) != 0)
         {
             if (ev.Type == (uint)EventType.Controllerdeviceadded) changed = true;
             if (ev.Type == (uint)EventType.Controllerdeviceremoved) changed = true;
+            if (!anyCtrl) continue;
+            if (ev.Type == (uint)EventType.Controllerbuttondown || ev.Type == (uint)EventType.Controllerbuttonup)
+                EventBus.Dispatch(new ControllerEvent
+                {
+                    Device = ev.Cbutton.Which,
+                    Button = ev.Cbutton.Button,
+                    Pressed = ev.Type == (uint)EventType.Controllerbuttondown,
+                });
+            else if (ev.Type == (uint)EventType.Controlleraxismotion)
+                EventBus.Dispatch(new ControllerEvent
+                {
+                    Device = ev.Caxis.Which,
+                    Axis = ev.Caxis.Axis,
+                    Value = ev.Caxis.Value / 32768f,
+                });
         }
         if (changed) Rescan();
     }
@@ -273,6 +307,89 @@ internal static unsafe class InputManager
     {
         if (key == Key.F1)  _topBarToggle = true;
         if (key == Key.F11) _fullscreenToggle = true;
+
+        if (EventBus.HasAnyListeners<KeyboardEvent>())
+        {
+            EventBus.Dispatch(new KeyboardEvent{
+                Key = (int)key,
+                Pressed = true
+            });
+        }
     }
+
+    static void OnKeyUp(IKeyboard kb, Key key, int _)
+    {
+        if (EventBus.HasAnyListeners<KeyboardEvent>())
+        {
+            EventBus.Dispatch(new KeyboardEvent{
+                Key = (int)key,
+                Pressed = false
+            });
+        }
+    }
+
+    static void OnMouseMove(IMouse mouse, Vector2 position)
+    {
+        if (EventBus.HasAnyListeners<MouseEvent>())
+        {
+            EventBus.Dispatch(new MouseEvent
+            {
+                Action = MouseAction.Move,
+                X = (int)position.X,
+                Y = (int)position.Y
+            });
+        }
+    }
+
+    static void OnMouseDown(IMouse mouse, MouseButton mouseButton)
+    {
+        if (EventBus.HasAnyListeners<MouseEvent>())
+        {
+            EventBus.Dispatch(new MouseEvent
+            {
+                Action = MouseAction.Button,
+                Button = MapMouseButton(mouseButton),
+                Pressed = true,
+                X = (int)mouse.Position.X,
+                Y = (int)mouse.Position.Y
+            });
+        }
+    }
+
+    static void OnMouseUp(IMouse mouse, MouseButton mouseButton)
+    {
+        if (EventBus.HasAnyListeners<MouseEvent>())
+        {
+            EventBus.Dispatch(new MouseEvent
+            {
+                Action = MouseAction.Button,
+                Button = MapMouseButton(mouseButton),
+                Pressed = false,
+                X = (int)mouse.Position.X,
+                Y = (int)mouse.Position.Y
+            });
+        }
+    }
+    
+    static void OnScroll(IMouse mouse, ScrollWheel wheel)
+    {
+        if (EventBus.HasAnyListeners<MouseEvent>())
+        {
+            EventBus.Dispatch(new MouseEvent
+            {
+                Action = MouseAction.Wheel,
+                Wheel = (int)wheel.Y,
+                X = (int)mouse.Position.X,
+                Y = (int)mouse.Position.Y
+            });
+        }
+    }
+    static EvMouseButton MapMouseButton(MouseButton button) => button switch
+    {
+        MouseButton.Left => EvMouseButton.Left,
+        MouseButton.Right => EvMouseButton.Right,
+        MouseButton.Middle => EvMouseButton.Middle,
+        _ => EvMouseButton.None
+    };
 
 }

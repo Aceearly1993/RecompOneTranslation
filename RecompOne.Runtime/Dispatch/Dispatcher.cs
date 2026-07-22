@@ -1,4 +1,5 @@
 using RecompOne.Runtime.Context;
+using RecompOne.Runtime.Events;
 using RecompOne.Runtime.Memory;
 using BiosKernel = RecompOne.Runtime.Bios.Bios;
 
@@ -6,6 +7,7 @@ namespace RecompOne.Runtime.Dispatch;
 
 public static class Dispatcher
 {
+    static readonly OverlayLoadedEvent _overlayEvent = new();
     static readonly Dictionary<string, IOverlay> _registry = new(StringComparer.OrdinalIgnoreCase);
     static readonly Dictionary<int, string> _lbaToName = [];
     static readonly List<string> _active = [];
@@ -64,6 +66,14 @@ public static class Dispatcher
         if (already) return;
         Runtime.OverlayLog.Record(name, OverlayEventKind.Loaded);
         Console.WriteLine($"[Dispatcher] loaded overlay: {name}");
+
+        if (Event.HasAnyListeners<OverlayLoadedEvent>())
+        {
+            var e = _overlayEvent;
+            e.Context = Runtime.Cpu!; e.Memory = Runtime.Mem!;
+            e.Name = name;
+            Event.Dispatch(e);
+        }
     }
 
     static void HandleRegionOverwrites(IOverlay overlay)

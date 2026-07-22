@@ -1,10 +1,12 @@
 using RecompOne.Runtime.Context;
+using RecompOne.Runtime.Events;
 using RecompOne.Runtime.Memory;
 
 namespace RecompOne.Runtime.Bios;
 
 public static class BiosB
 {
+    static readonly PadReadEvent _padEvent = new();
     struct EvCB { public uint Status, Class, Spec, Mode, Func; }
     const int MaxEvents = 64;
     static readonly EvCB[] _evCBs = new EvCB[MaxEvents];
@@ -84,6 +86,16 @@ public static class BiosB
         return 0xFFFFFFFFu;
     }
     
+    static ushort FirePad(IMemory m, int port, ushort buttons)
+    {
+        if (!Event.HasAnyListeners<PadReadEvent>()) return buttons;
+        var e = _padEvent;
+        e.Context = Runtime.Cpu!; e.Memory = m;
+        e.Port = port; e.Buttons = buttons;
+        Event.Dispatch(e);
+        return e.Buttons;
+    }
+
     static void PadRead(IMemory m)
     {
         if (_padBuf == 0) return;
@@ -91,6 +103,8 @@ public static class BiosB
         ushort swapped = (ushort)((s >> 8) | (s << 8));
         ushort s2 = Hardware.Controller.State2;
         ushort swapped2 = (ushort)((s2 >> 8) | (s2 << 8));
+        swapped = FirePad(m, 0, swapped);
+        swapped2 = FirePad(m, 1, swapped2);
         m.WriteU32(_padBuf,     ((uint)swapped2 << 16) | swapped);
         m.WriteU8(_padBuf + 4, Hardware.Controller.RightX);
         m.WriteU8(_padBuf + 5, Hardware.Controller.RightY);

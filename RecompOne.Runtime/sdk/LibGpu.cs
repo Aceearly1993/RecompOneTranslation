@@ -1,4 +1,5 @@
 using RecompOne.Runtime.Context;
+using RecompOne.Runtime.Events;
 using RecompOne.Runtime.Hle;
 using RecompOne.Runtime.Memory;
 
@@ -6,6 +7,8 @@ namespace RecompOne.Runtime.Sdk;
 
 public static class LibGpu
 {
+    static readonly DrawEnvEvent _drawEnvEvent = new();
+    static readonly DispEnvEvent _dispEnvEvent = new();
 
     public static void DrawOTag(CpuContext c, IMemory m)
     {
@@ -62,6 +65,15 @@ public static class LibGpu
             gpu.WriteGp0(((uint)(ushort)h << 16) | (ushort)w);
         }
 
+        if (Event.HasAnyListeners<DrawEnvEvent>())
+        {
+            var e = _drawEnvEvent;
+            e.Context = c; e.Memory = m;
+            e.ClipX = clipX; e.ClipY = clipY; e.ClipW = clipW; e.ClipH = clipH;
+            e.OfsX = ofsX; e.OfsY = ofsY; e.IsBackground = isbg != 0;
+            Event.Dispatch(e);
+        }
+
         c.V0 = c.A0;
     }
 
@@ -105,6 +117,15 @@ public static class LibGpu
         gpu.WriteGp1(mode);
 
         GpuHle.NotifyDisplay(dispX, dispY, dispW, dispH);
+
+        if (Event.HasAnyListeners<DispEnvEvent>())
+        {
+            var e = _dispEnvEvent;
+            e.Context = c; e.Memory = m;
+            e.X = dispX; e.Y = dispY; e.W = dispW; e.H = dispH;
+            Event.Dispatch(e);
+        }
+
         c.V0 = c.A0;
     }
 
