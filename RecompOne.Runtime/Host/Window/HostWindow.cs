@@ -11,7 +11,7 @@ using RecompOne.Runtime.Host.Window;
 
 namespace RecompOne.Runtime.Host;
 
-internal static class HostWindow
+public static class HostWindow
 {
     static IWindow? _window;
     static GL? _gl;
@@ -307,6 +307,18 @@ internal static class HostWindow
         _gl?.DeleteTexture(_displayTex);
         _gl?.DeleteTexture(_vramTex);
         _gl?.DeleteTexture(_ramTex);
+    }
+
+    public static uint UploadTexture(byte[] rgba, int width, int height)
+    {
+        if (_gl == null || width <= 0 || height <= 0) return 0;
+        int needed = width * height * 4;
+        if (rgba.Length < needed) return 0;
+        var tex = CreateTexture(_gl);
+        _gl.BindTexture(TextureTarget.Texture2D, tex);
+        _gl.TexImage2D<byte>(TextureTarget.Texture2D, 0, InternalFormat.Rgba,
+            (uint)width, (uint)height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, rgba.AsSpan(0, needed));
+        return tex;
     }
 
     static uint CreateTexture(GL gl)
