@@ -71,7 +71,7 @@ Currently im the only mantainer of the project and my free time is limited, my c
 
 ## Stance on AI
 
-This project is not vibe-coded. AI was not involved in writing the code!
+This project is not vibe-coded. AI was not involved in writing the code! AI PRs will be rejected.
 
 This project does not support vibe-coded ports. Ai can be a useful research tool, but it does not replace the human judgment needed to understand and correctly implement what you are building
 
