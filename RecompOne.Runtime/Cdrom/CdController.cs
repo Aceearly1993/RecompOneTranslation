@@ -23,6 +23,12 @@ public sealed class CdController
     private bool _streamPending;
     private byte _lastIrq;
 
+    private byte _mode;
+    private byte _filterFile;
+    private byte _filterChannel;
+    private bool _playing;
+    private bool _seeking;
+
     private readonly object _dbgGate = new();
     private readonly Queue<string> _dbgEvents = new();
     private const int DbgMaxEvents = 256;
@@ -125,16 +131,29 @@ public sealed class CdController
     private static string CmdName(byte cmd) => cmd switch {
         0x01 => "GetStat",
         0x02 => "Setloc",
+        0x03 => "Play",
+        0x04 => "Forward",
+        0x05 => "Backward",
         0x06 => "ReadN",
+        0x07 => "Standby",
         0x08 => "Stop",
         0x09 => "Pause",
         0x0A => "Init",
         0x0B => "Mute",
         0x0C => "Demute",
+        0x0D => "Setfilter",
         0x0E => "Setmode",
+        0x0F => "Getparam",
+        0x10 => "GetlocL",
+        0x11 => "GetlocP",
+        0x13 => "GetTN",
+        0x14 => "GetTD",
         0x15 => "SeekL",
         0x16 => "SeekP",
+        0x19 => "Test",
+        0x1A => "GetID",
         0x1B => "ReadS",
+        0x1E => "ReadTOC",
         _ => $"0x{cmd:X2}"
     };
 
@@ -217,25 +236,53 @@ public sealed class CdController
                     _seekLba = BcdToLba(prms[0], prms[1], prms[2]);
                 QueueIrq(3, [DriveStatus()]);
                 break;
+            case 0x03: // cd-da play (not sure if it goes used in games?)
+                _reading = false;
+                _playing = true;
+                if (prms.Count == 1 && prms[0] != 0 && _fs.TrackStartLba(BcdToInt(prms[0]), out int trackLba))
+                    _seekLba = trackLba - 150;
+                QueueIrq(3, [DriveStatus()]);
+                break;
+            case 0x04: // frwd
+            case 0x05: // bkwrd
+                QueueIrq(3, [DriveStatus()]);
+                break;
             case 0x06: // ReadN
+                if (IsAudioRegion(_seekLba) && (_mode & 0x01) == 0) //h40 if not da mode
+                {
+                    _reading = false;
+                    QueueIrq(5, [(byte)(DriveStatus() | 0x01), 0x40]);
+                    break;
+                }
                 _reading = true;
+                _playing = false;
                 ReadNextSector();
                 QueueIrq(3, [DriveStatus()]);
                 QueueIrq(1, [DriveStatus()]);
                 break;
+            case 0x07: //standby
+                QueueIrq(3, [DriveStatus()]);
+                QueueIrq(2, [DriveStatus()]);
+                break;
             case 0x08: //Stop
                 _reading = false;
+                _playing = false;
                 _streamPending = false;
                 QueueIrq(3, [DriveStatus()]);
                 QueueIrq(2, [DriveStatus()]);
                 break;
             case 0x09: // Pause
                 _reading = false;
+                _playing = false;
                 _streamPending = false;
                 QueueIrq(3, [DriveStatus()]);
                 QueueIrq(2, [DriveStatus()]);
                 break;
             case 0x0A:
+                _mode = 0;
+                _reading = false;
+                _playing = false;
+                _streamPending = false;
                 QueueIrq(3, [DriveStatus()]);
                 QueueIrq(2, [DriveStatus()]);
                 break;
@@ -245,19 +292,83 @@ public sealed class CdController
             case 0x0C: // demute
                 QueueIrq(3, [DriveStatus()]);
                 break;
-            case 0x0E: // set mode
+            case 0x0D: // set filter
+                if (prms.Count >= 2) { _filterFile = prms[0]; _filterChannel = prms[1]; }
                 QueueIrq(3, [DriveStatus()]);
                 break;
-            case 0x15: // seek L
-            case 0x16: //seek P
+            case 0x0E: // set mode
+                if (prms.Count >= 1) _mode = prms[0];
                 QueueIrq(3, [DriveStatus()]);
+                break;
+            case 0x0F: // get param
+                QueueIrq(3, [DriveStatus(), _mode, 0x00, _filterFile, _filterChannel]);
+                break;
+            case 0x10: // Getloc L
+                QueueIrq(3, GetlocL());
+                break;
+            case 0x11: // Getloc P
+                QueueIrq(3, GetlocP());
+                break;
+            case 0x13: // GetTN
+                QueueIrq(3, [DriveStatus(), IntToBcd(_fs.FirstTrack), IntToBcd(_fs.LastTrack)]);
+                break;
+            case 0x14: // getTD
+            {
+                int track = prms.Count >= 1 ? BcdToInt(prms[0]) : 0;
+                int lba = track == 0 || !_fs.TrackStartLba(track, out int tl) ? _fs.LeadoutLba : tl;
+                LbaToMsf(lba, out byte tmm, out byte tss, out _);
+                QueueIrq(3, [DriveStatus(), tmm, tss]);
+                break;
+            }
+            case 0x15: // seek L
+                _seeking = true;
+                QueueIrq(3, [DriveStatus()]);
+                _seeking = false;
+                //04h if outside
+                if (IsAudioRegion(_seekLba)) 
+                {
+                    _reading = false;
+                    _playing = false;
+                    QueueIrq(5, [(byte)(DriveStatus() | 0x04), 0x04]);
+                }
+                else
+                {
+                    QueueIrq(2, [DriveStatus()]);
+                }
+                break;
+            case 0x16: //seek P
+                _seeking = true;
+                QueueIrq(3, [DriveStatus()]);
+                _seeking = false;
                 QueueIrq(2, [DriveStatus()]);
                 break;
+            case 0x19: // tst
+                if (prms.Count >= 1 && prms[0] == 0x20)
+                    QueueIrq(3, [0x94, 0x09, 0x19, 0xC0]);
+                else
+                    QueueIrq(3, [DriveStatus()]);
+                break;
+            case 0x1A: // get id
+                QueueIrq(3, [DriveStatus()]);
+                QueueIrq(2, [0x02, 0x00, 0x20, 0x00, 0x53, 0x43, 0x45, 0x41]);
+                break;
             case 0x1B: // read s
+                //40h if outside
+                if (IsAudioRegion(_seekLba) && (_mode & 0x01) == 0)
+                {
+                    _reading = false;
+                    QueueIrq(5, [(byte)(DriveStatus() | 0x01), 0x40]);
+                    break;
+                }
                 _reading = true;
+                _playing = false;
                 ReadNextSector();
                 QueueIrq(3, [DriveStatus()]);
                 QueueIrq(1, [DriveStatus()]);
+                break;
+            case 0x1E: // Read toc
+                QueueIrq(3, [DriveStatus()]);
+                QueueIrq(2, [DriveStatus()]);
                 break;
             default:
                 Console.WriteLine($"[CD] command 0x{cmd:X2} is unknow");
@@ -266,6 +377,7 @@ public sealed class CdController
         }
     }
 
+    
     private void QueueIrq(byte irqType, byte[] response)
     {
         if (_irqFlags == 0 && _pendingIrqs.Count == 0)
@@ -308,7 +420,6 @@ public sealed class CdController
         _lastIrq = irqType;
         SetInInterrupt(1);
     }
-
     private byte ReadDataByte()
     {
         if (!_dataReady || _dataFifoPos >= _dataBuf.Length) { _dataReady = false; return 0; }
@@ -412,7 +523,55 @@ public sealed class CdController
         QueueIrq(2, [DriveStatus()]);
     }
 
-    private static byte DriveStatus() => 0x02;
+    
+    private bool IsAudioRegion(int lba) => lba >= _fs.DataSectors;
+
+    private byte DriveStatus()
+    {
+        byte s = 0x02;
+        if (_reading) s |= 0x20;
+        if (_seeking) s |= 0x40;
+        if (_playing) s |= 0x80;
+        return s;
+    }
+
+    private byte[] GetlocL()
+    {
+        LbaToMsf(_lastReadLba + 150, out byte amm, out byte ass, out byte aff);
+        return [amm, ass, aff, _mode, _filterFile, _filterChannel, 0, 0];
+    }
+    private byte[] GetlocP()
+    {
+        int abs = _seekLba + 150;
+        LbaToMsf(abs, out byte amm, out byte ass, out byte aff);
+        int track = 1;
+        int rel = _seekLba;
+        if (_fs.HasTracks)
+        {
+            for (int t = _fs.FirstTrack; t <= _fs.LastTrack; t++)
+            {
+                if (_fs.TrackStartLba(t, out int tl) && abs >= tl)
+                {
+                    track = t;
+                    rel = abs - tl;
+                }
+            }
+        }
+        LbaToMsf(rel, out byte rmm, out byte rss, out byte rff);
+        return [IntToBcd(track), 0x01, rmm, rss, rff, amm, ass, aff];
+    }
+
+    private static byte IntToBcd(int n) => (byte)(((n / 10) << 4) | (n % 10));
+    private static int BcdToInt(byte b) => (b >> 4) * 10 + (b & 0xF);
+    
+    //not sure if its correct
+    private static void LbaToMsf(int lba, out byte mm, out byte ss, out byte ff)
+    {
+        if (lba < 0) lba = 0;
+        ff = IntToBcd(lba % 75);
+        ss = IntToBcd(lba / 75 % 60);
+        mm = IntToBcd(lba / 75 / 60);
+    }
 
     private static int BcdToLba(byte mm, byte ss, byte ff)
     {

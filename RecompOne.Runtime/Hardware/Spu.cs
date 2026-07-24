@@ -145,6 +145,7 @@ public sealed class Spu
     ushort _transferCtrl = 4;
     ushort _cdVolL, _cdVolR;
     ushort _extVolL, _extVolR;
+    int _cdMixLL = 0x80, _cdMixLR, _cdMixRL, _cdMixRR = 0x80;
     ushort _reverbStartAddr;
 
     int _noiseLevel = 1;
@@ -355,6 +356,17 @@ public sealed class Spu
         }
     }
 
+    public void SetCdMix(byte ll, byte lr, byte rl, byte rr)
+    {
+        lock (_sync)
+        {
+            _cdMixLL = ll;
+            _cdMixLR = lr;
+            _cdMixRL = rl;
+            _cdMixRR = rr;
+        }
+    }
+
     public void Mix(short[] dst, int frames)
     {
         lock (_sync)
@@ -368,8 +380,10 @@ public sealed class Spu
                 int mixL = l, mixR = r;
                 if (XaAudio.Next(out short xl, out short xr))
                 {
-                    mixL += xl * (short)_cdVolL >> 15;
-                    mixR += xr * (short)_cdVolR >> 15;
+                    int aL = (xl * _cdMixLL + xr * _cdMixRL) >> 7;
+                    int aR = (xl * _cdMixLR + xr * _cdMixRR) >> 7;
+                    mixL += aL * (short)_cdVolL >> 15;
+                    mixR += aR * (short)_cdVolR >> 15;
                 }
                 mixL = Math.Clamp(mixL, -32768, 32767) * _mainCurL >> 15;
                 mixR = Math.Clamp(mixR, -32768, 32767) * _mainCurR >> 15;

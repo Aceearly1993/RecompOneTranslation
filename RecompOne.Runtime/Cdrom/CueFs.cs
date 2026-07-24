@@ -1,5 +1,6 @@
 namespace RecompOne.Runtime.Cdrom;
 
+//it it
 public sealed class CueFs : IDisposable
 {
     private record Entry(int Lba, uint Size, bool IsDir, string Name);
@@ -78,6 +79,13 @@ public sealed class CueFs : IDisposable
         }
         return null;
     }
+
+    public int FirstTrack => _bin.FirstTrack;
+    public int LastTrack => _bin.LastTrack;
+    public bool HasTracks => _bin.HasTracks;
+    public int LeadoutLba => _bin.LeadoutLba;
+    public int DataSectors => _bin.DataSectors;
+    public bool TrackStartLba(int track, out int lba) => _bin.TrackStartLba(track, out lba);
 
     public byte[] ReadSector(int lba) => _bin.ReadSector(lba);
 

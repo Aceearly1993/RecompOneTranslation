@@ -6,29 +6,40 @@ namespace RecompOne.Runtime.Sdk;
 
 public static class LibCd
 {
-    const byte Nop = 0x01, 
+    const byte Nop = 0x01,
         Setloc = 0x02,
         Play = 0x03,
-        ReadN = 0x06, 
+        Forward = 0x04,
+        Backward = 0x05,
+        ReadN = 0x06,
+        Standby = 0x07,
         Stop = 0x08,
         Pause = 0x09,
         Init = 0x0A,
-        Mute = 0x0B, 
-        Demute = 0x0C, 
+        Mute = 0x0B,
+        Demute = 0x0C,
         Setfilter = 0x0D,
         Setmode = 0x0E,
+        Getparam = 0x0F,
         GetlocL = 0x10,
         GetlocP = 0x11,
+        GetTN = 0x13,
+        GetTD = 0x14,
         SeekL = 0x15,
         SeekP = 0x16,
         ReadS = 0x1B;
 
     const int Complete = 0x02;
     const int DataReady = 0x01;
+    const int DiskError = 0x05;
     const byte ModeSize1 = 0x20, ModeSize0 = 0x10;
 
     const byte StatMotor = 0x02;
+    const byte StatRead = 0x20;
+    const byte StatSeek = 0x40;
+    const byte StatPlay = 0x80;
     static byte _status;
+    static int _debugLevel;
     static byte _mode;
     static byte _com;
     static readonly byte[] _pos = new byte[4];
@@ -95,6 +106,13 @@ public static class LibCd
         uint buf = c.A1;
         _mode = (byte)c.A2;
         int lba = CurrentLba;
+        if (IsAudioRegion(lba) && (_mode & 0x01) == 0)
+        {
+            Log.Sdk($"CdRead out range lba={lba}");
+            SetError(0x40, 0x01);
+            c.V0 = 1;
+            return;
+        }
         int size = SectorSize(_mode);
         Dispatcher.LoadByLba(lba);
         Log.Sdk($"CdRead sectors={sectors} buf=0x{buf:X8} mode=0x{_mode:X2} lba={lba} size={size}");
@@ -186,7 +204,7 @@ public static class LibCd
     public static void CdReadSync(CpuContext c, IMemory m)
     {
         if (c.A1 != 0) WriteResult(m, c.A1);
-        c.V0 = 0;
+        c.V0 = _lastIntr == DiskError ? 0xFFFFFFFFu : 0u;
     }
 
     public static void CdGetSector(CpuContext c, IMemory m)
@@ -243,7 +261,143 @@ public static class LibCd
     public static void CdStatus(CpuContext c, IMemory m) => c.V0 = _status;
     public static void CdMode(CpuContext c, IMemory m) => c.V0 = _mode;
     public static void CdLastCom(CpuContext c, IMemory m) => c.V0 = _com;
-    public static void CdMix(CpuContext c, IMemory m) => c.V0 = 1;
+
+    public static void CdMix(CpuContext c, IMemory m)
+    {
+        if (c.A0 != 0)
+            Runtime.Spu?.SetCdMix(m.ReadU8(c.A0), m.ReadU8(c.A0 + 1), m.ReadU8(c.A0 + 2), m.ReadU8(c.A0 + 3));
+        c.V0 = 1;
+    }
+
+    const uint LastPosScratch = 0x1F8003E0;
+
+    public static void CdPosToInt(CpuContext c, IMemory m)
+    {
+        byte mm = m.ReadU8(c.A0), ss = m.ReadU8(c.A0 + 1), sect = m.ReadU8(c.A0 + 2);
+        c.V0 = (uint)((Bcd(mm) * 60 + Bcd(ss)) * 75 + Bcd(sect) - 150);
+    }
+
+    public static void CdIntToPos(CpuContext c, IMemory m)
+    {
+        IntToPos((int)c.A0, out byte mm, out byte ss, out byte ff);
+        m.WriteU8(c.A1, mm);
+        m.WriteU8(c.A1 + 1, ss);
+        m.WriteU8(c.A1 + 2, ff);
+        c.V0 = c.A1;
+    }
+
+    public static void CdGetToc(CpuContext c, IMemory m)
+    {
+        var fs = Runtime.Cd?.Fs;
+        if (fs is not { HasTracks: true }) { c.V0 = 0; return; }
+        int first = fs.FirstTrack, last = fs.LastTrack;
+        MsfAbs(fs.LeadoutLba, out byte lmm, out byte lss);
+        WriteLoc(m, c.A0, lmm, lss, 0);
+        int n = 0;
+        for (int t = first; t <= last; t++)
+        {
+            if (!fs.TrackStartLba(t, out int lba)) continue;
+            MsfAbs(lba, out byte mm, out byte ss);
+            WriteLoc(m, c.A0 + (uint)(t * 4), mm, ss, (byte)t);
+            n++;
+        }
+        c.V0 = (uint)n;
+    }
+
+    static void WriteLoc(IMemory m, uint addr, byte mm, byte ss, byte track)
+    {
+        m.WriteU8(addr, mm);
+        m.WriteU8(addr + 1, ss);
+        m.WriteU8(addr + 2, 0);
+        m.WriteU8(addr + 3, track);
+    }
+
+    public static void CdPlay(CpuContext c, IMemory m)
+    {
+        _status = (byte)(StatMotor | StatPlay);
+        _readActive = false;
+        if (c.A1 != 0)
+        {
+            int track = (int)m.ReadU32(c.A1);
+            var fs = Runtime.Cd?.Fs;
+            if (fs != null && fs.TrackStartLba(track, out int lba))
+                lock (_posGate) IntToPos(lba - 150, out _pos[0], out _pos[1], out _pos[2]);
+        }
+        c.V0 = 1;
+    }
+    //autoload too fix, should it load threaded? unthreaded for now
+    public static void CdReadFile(CpuContext c, IMemory m)
+    {
+        string name = ReadCString(m, c.A0);
+        int nbyte = (int)c.A2;
+        if (Runtime.Cd == null || !Runtime.Cd.Fs.Locate(name, out int lba, out uint size))
+        {
+            Log.Sdk($"CdReadFile '{name}' is not found");
+            c.V0 = 0xFFFFFFFFu;
+            return;
+        }
+        int total = nbyte <= 0 ? (int)size : Math.Min(nbyte, (int)size);
+        byte[] data;
+        lock (DiscLock) data = Runtime.Cd.Fs.ReadSectors(lba, total);
+        for (int i = 0; i < data.Length; i++) m.WriteU8(c.A1 + (uint)i, data[i]);
+        
+        Dispatcher.TryLoad(Cdrom.CdUtils.OverlayName(Cdrom.CdUtils.ExtractFileName(name)));
+        Log.Sdk($"CdReadFile '{name}' lba={lba} size={size} to 0x{c.A1:X8} ({total} bites)");
+        c.V0 = (uint)(nbyte == 0 ? (int)size : nbyte);
+    }
+
+    public static void CdComstr(CpuContext c, IMemory m) => c.V0 = 0;
+    public static void CdIntstr(CpuContext c, IMemory m) => c.V0 = 0;
+
+    public static void CdDiskReady(CpuContext c, IMemory m) => c.V0 = (uint)Complete;
+
+    public static void CdGetDiskType(CpuContext c, IMemory m) => c.V0 = Runtime.Cd != null ? 2u : 0u;
+
+    public static void CdLastPos(CpuContext c, IMemory m)
+    {
+        lock (_posGate)
+        {
+            m.WriteU8(LastPosScratch, _pos[0]);
+            m.WriteU8(LastPosScratch + 1, _pos[1]);
+            m.WriteU8(LastPosScratch + 2, _pos[2]);
+            m.WriteU8(LastPosScratch + 3, _pos[3]);
+        }
+        c.V0 = LastPosScratch;
+    }
+
+    public static void CdReadBreak(CpuContext c, IMemory m)
+    {
+        _readActive = false;
+        _xaActive = false;
+        LibCdStream.OnStopStream();
+        _status = StatMotor;
+        Dispatcher.ClearPending();
+        c.V0 = 0;
+    }
+
+    public static void CdSetDebug(CpuContext c, IMemory m)
+    {
+        c.V0 = (uint)_debugLevel;
+        _debugLevel = (int)c.A0;
+    }
+
+    public static void CdFlush(CpuContext c, IMemory m)
+    {
+        Dispatcher.ClearPending();
+        c.V0 = 0;
+    }
+
+    public static void CdGetSector2(CpuContext c, IMemory m) => CdGetSector(c, m);
+
+    public static void CdRead2(CpuContext c, IMemory m)
+    {
+        _mode = (byte)c.A0;
+        _readActive = true;
+        _status = (byte)(StatMotor | StatRead);
+        Dispatcher.LoadByLba(CurrentLba);
+        EnsureXaThread();
+        c.V0 = 1;
+    }
 
     static void CdResetState()
     {
@@ -258,6 +412,7 @@ public static class LibCd
         _filterFile = _filterChannel = 0;
         Array.Clear(_pos);
         Array.Clear(_lastResult);
+        Runtime.Spu?.SetCdMix(0x80, 0, 0, 0x80); //reset mix
         Dispatcher.ClearPending();
     }
 
@@ -295,17 +450,51 @@ public static class LibCd
                 if (param != 0) { _filterFile = m.ReadU8(param); _filterChannel = m.ReadU8(param + 1); }
                 break;
             case ReadN:
+                if (IsAudioRegion(CurrentLba) && (_mode & 0x01) == 0)
+                {
+                    _readActive = false;
+                    Log.Sdk($"readn out range lba={CurrentLba}");
+                    SetError(0x40, 0x01);
+                    if (result != 0) WriteResult(m, result);
+                    return DiskError;
+                }
                 _readActive = true;
+                _status = (byte)(StatMotor | StatRead);
                 Dispatcher.LoadByLba(CurrentLba);
                 EnsureXaThread();
                 break;
             case ReadS:
+                if (IsAudioRegion(CurrentLba) && (_mode & 0x01) == 0)
+                {
+                    _xaActive = false;
+                    _readActive = false;
+                    Log.Sdk($"ReadS out range lba={CurrentLba}");
+                    SetError(0x40, 0x01);
+                    if (result != 0) WriteResult(m, result);
+                    return DiskError;
+                }
                 _xaActive = true;
                 _readActive = false;
+                _status = (byte)(StatMotor | StatRead);
                 LibCdStream.OnReadStream(CurrentLba);
                 break;
+            case Play:
+                _readActive = false;
+                _status = (byte)(StatMotor | StatPlay);
+                break;
+            case Getparam:
+                _lastResult[0] = _status;
+                _lastResult[1] = _mode;
+                _lastResult[2] = 0;
+                _lastResult[3] = _filterFile;
+                _lastResult[4] = _filterChannel;
+                _lastResult[5] = 0;
+                _lastResult[6] = 0;
+                _lastResult[7] = 0;
+                if (result != 0) WriteResult(m, result);
+                return 0;
             case GetlocL:
-            case GetlocP:
+            {
                 lock (_posGate)
                 {
                     _lastResult[0] = _pos[0];
@@ -319,14 +508,69 @@ public static class LibCd
                 _lastResult[7] = 0;
                 if (result != 0) WriteResult(m, result);
                 return 0;
+            }
+            case GetlocP:
+            {
+                int abs = CurrentLba + 150;
+                int track = ResolveTrack(abs, out int rel);
+                IntToPos(rel, out byte rmm, out byte rss, out byte rff);
+                _lastResult[0] = ToBcd(track);
+                _lastResult[1] = 0x01;
+                _lastResult[2] = rmm;
+                _lastResult[3] = rss;
+                _lastResult[4] = rff;
+                lock (_posGate)
+                {
+                    _lastResult[5] = _pos[0];
+                    _lastResult[6] = _pos[1];
+                    _lastResult[7] = _pos[2];
+                }
+                if (result != 0) WriteResult(m, result);
+                return 0;
+            }
+            case GetTN:
+            {
+                var fs = Runtime.Cd?.Fs;
+                _lastResult[0] = _status;
+                _lastResult[1] = ToBcd(fs?.FirstTrack ?? 1);
+                _lastResult[2] = ToBcd(fs?.LastTrack ?? 1);
+                for (int i = 3; i < _lastResult.Length; i++) _lastResult[i] = 0;
+                if (result != 0) WriteResult(m, result);
+                return 0;
+            }
+            case GetTD:
+            {
+                var fs = Runtime.Cd?.Fs;
+                int track = param != 0 ? Bcd(m.ReadU8(param)) : 0;
+                int lba = fs == null ? 0
+                    : track == 0 || !fs.TrackStartLba(track, out int tl) ? fs.LeadoutLba : tl;
+                MsfAbs(lba, out byte tmm, out byte tss);
+                _lastResult[0] = _status;
+                _lastResult[1] = tmm;
+                _lastResult[2] = tss;
+                for (int i = 3; i < _lastResult.Length; i++) _lastResult[i] = 0;
+                if (result != 0) WriteResult(m, result);
+                return 0;
+            }
             case Pause: case Stop: case Init:
                 LibCdStream.OnStopStream();
                 _readActive = false;
                 _xaActive = false;
+                _status = StatMotor;
                 Dispatcher.ClearPending();
                 break;
-            case Nop: case Play: case Mute:
-            case Demute: case SeekL: case SeekP:
+            case SeekL:
+                if (IsAudioRegion(CurrentLba))
+                {
+                    Log.Sdk($"SeekL out range lba={CurrentLba}");
+                    SetError(0x04, 0x04);
+                    if (result != 0) WriteResult(m, result);
+                    return 0;
+                }
+                break;
+            case Nop: case Mute: case Demute:
+            case Forward: case Backward: case Standby:
+            case SeekP:
                 break;
             default:
                 break;
@@ -338,6 +582,46 @@ public static class LibCd
         return 0;
     }
 
+    static int ResolveTrack(int abs, out int rel)
+    {
+        rel = abs - 150;
+        var fs = Runtime.Cd?.Fs;
+        int track = 1;
+        if (fs is { HasTracks: true })
+        {
+            for (int t = fs.FirstTrack; t <= fs.LastTrack; t++)
+            {
+                if (fs.TrackStartLba(t, out int tl) && abs >= tl)
+                {
+                    track = t;
+                    rel = abs - tl;
+                }
+            }
+        } return track;
+    }
+
+    static void MsfAbs(int lba, out byte mm, out byte ss)
+    {
+        if (lba < 0) lba = 0; ss = ToBcd(lba / 75 % 60);
+        mm = ToBcd(lba / 75 / 60);
+    }
+
+    static bool IsAudioRegion(int lba)
+    {
+        var fs = Runtime.Cd?.Fs;
+        return fs != null && lba >= fs.DataSectors;
+    }
+
+    static void SetError(byte errByte, byte extraStat)
+    {
+        _lastIntr = DiskError;
+        _lastResult[0] = (byte)(_status | extraStat);
+        _lastResult[1] = errByte;
+        for (int i = 2; i < _lastResult.Length; i++) _lastResult[i] = 0;
+    }
+
+    
+    
     static int SyncResult(IMemory m, uint result)
     {
         if (result != 0) WriteResult(m, result);
@@ -373,7 +657,6 @@ public static class LibCd
     static byte ToBcd(int n) => (byte)(((n / 10) << 4) + (n % 10));
 
     static int PosToInt(byte[] p) => (Bcd(p[0]) * 60 + Bcd(p[1])) * 75 + Bcd(p[2]) - 150;
-
     static void IntToPos(int i, out byte mm, out byte ss, out byte ff)
     {
         i += 150;
@@ -381,4 +664,6 @@ public static class LibCd
         ss = ToBcd(i / 75 % 60);
         mm = ToBcd(i / 75 / 60);
     }
+    
+    
 }
