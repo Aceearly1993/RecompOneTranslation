@@ -58,14 +58,7 @@ this is for providing "base mods" for the game, like fixing functions the recomp
 
 ## Creating a recompilation
 
-Run the recompiler with a recomp config file:
-
-```
-recompone MyGame.json
-```
-
-The recompiler reads the disc image provided in the configuration file, gets the data and recompile it and any overlays using the elf as a base for finding functions, then it writes one C# file per segment to the output directory.
-
+refer to the [wiki](https://github.com/BlackLabelHQ/RecompOne/wiki)
 
 ## TODO
 - [ ] **MultiDisc games** current implementation doesnt deal with games that have multiple discs (should be an relatively easy implementation)
