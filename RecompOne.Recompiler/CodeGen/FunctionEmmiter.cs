@@ -81,7 +81,7 @@ public static class FunctionEmitter
             {
                 string line = InstructionEmitter.EmitSingle(instr);
                 if (!string.IsNullOrEmpty(line))
-                    sb.AppendLine($"{ind}{line}");
+                    sb.AppendLine(ctx.Trail(instr, $"{ind}{line}"));
             }
         }
 

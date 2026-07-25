@@ -222,7 +222,7 @@ public static class OverlayWriter
         foreach (var result in overlayResults)
         {
             Console.WriteLine($"[Recompiler] emiting {result.Name}.cs ({result.Functions.Count} functions)");
-            EmitOverlayFile(result.Name, result.Functions, className, knownFuncs, config.Debug, result.LbaStart,  result.Base, result.Size, result.Instructions, outDir);
+            EmitOverlayFile(result.Name, result.Functions, className, knownFuncs, config.Debug, config.AddressComments, config.DisasmComments, result.LbaStart,  result.Base, result.Size, result.Instructions, outDir);
         }
 
         Console.WriteLine("[Recompiler] Emitting Entry.cs");
@@ -260,7 +260,7 @@ public static class OverlayWriter
         Console.WriteLine($"[Recompiler] linear sweep found {swept.Count} function(s) (+{callees.Count} callees) in {overlayName}");
     }
 
-    static void EmitOverlayFile(string overlayName, List<MipsFunction> funcs, string className, Dictionary<uint, string> knownFuncs, bool debug, int lbaStart, uint ovlBase, uint ovlSize, MipsInstruction[] instrs, string outDir)
+    static void EmitOverlayFile(string overlayName, List<MipsFunction> funcs, string className, Dictionary<uint, string> knownFuncs, bool debug, bool addressComments, bool disasmComments, int lbaStart, uint ovlBase, uint ovlSize, MipsInstruction[] instrs, string outDir)
     {
         var sb = new StringBuilder();
         sb.AppendLine("using RecompOne.Runtime.Context;");
@@ -282,6 +282,8 @@ public static class OverlayWriter
                 KnownFunctions = knownFuncs,
                 Labels = labels,
                 Debug = debug,
+                AddressComments = addressComments,
+                DisasmComments = disasmComments,
                 JumpTablesByJr = func.JumpTables.ToDictionary(j => j.JrVram),
                 RaReturnJrs = FunctionDetector.ComputeRaReturnJrs(func),
                 AllInstructions = instrs

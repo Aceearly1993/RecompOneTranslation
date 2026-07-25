@@ -178,38 +178,38 @@ public static class InstructionEmitter
             if (ds == null) return;
             //fixes delay slot as branch target bug
             string line = EmitSingle(ds);
-            if (!string.IsNullOrEmpty(line)) sb.AppendLine($"{indent}{line}");
+            if (!string.IsNullOrEmpty(line)) sb.AppendLine(ctx.Trail(ds, $"{indent}{line}"));
         }
 
         void DsInline()
         {
             if (ds == null) return;
             string line = EmitSingle(ds);
-            if (!string.IsNullOrEmpty(line)) sb.AppendLine($"{ind2}{line}");
+            if (!string.IsNullOrEmpty(line)) sb.AppendLine(ctx.Trail(ds, $"{ind2}{line}"));
         }
 
         void CallOrDispatch(uint addr, string ind)
         {
             if (ctx.KnownFunctions.TryGetValue(addr, out var name))
-                sb.AppendLine($"{ind}{name}(c, m);");
+                sb.AppendLine(ctx.Trail(ctrl, $"{ind}{name}(c, m);"));
             else
-                sb.AppendLine($"{ind}Dispatcher.Call(c, m, 0x{addr:X8}u);");
+                sb.AppendLine(ctx.Trail(ctrl, $"{ind}Dispatcher.Call(c, m, 0x{addr:X8}u);"));
         }
 
         bool InFunc(uint target) => target >= ctx.FuncStart && target < ctx.FuncEnd;
 
         void Conditional(string cond, uint target)
         {
-            sb.AppendLine($"{indent}if ({cond}) {{");
+            sb.AppendLine(ctx.Trail(ctrl, $"{indent}if ({cond}) {{"));
             DsInline();
             if (InFunc(target))
-                sb.AppendLine($"{ind2}goto L{target:X8};");
+                sb.AppendLine(ctx.Trail(ctrl, $"{ind2}goto L{target:X8};"));
             else
             {
                 CallOrDispatch(target, ind2);
-                sb.AppendLine($"{ind2}return;");
+                sb.AppendLine(ctx.Trail(ctrl, $"{ind2}return;"));
             }
-            sb.AppendLine($"{indent}}}");
+            sb.AppendLine(ctx.Trail(ctrl, $"{indent}}}"));
         }
 
         if (op is 4 or 5 or 6 or 7)
@@ -218,8 +218,8 @@ public static class InstructionEmitter
             if (op == 4 && rs == rt)
             {
                 Ds();
-                if (InFunc(target)) sb.AppendLine($"{indent}goto L{target:X8};");
-                else { CallOrDispatch(target, indent); sb.AppendLine($"{indent}return;"); }
+                if (InFunc(target)) sb.AppendLine(ctx.Trail(ctrl, $"{indent}goto L{target:X8};"));
+                else { CallOrDispatch(target, indent); sb.AppendLine(ctx.Trail(ctrl, $"{indent}return;")); }
                 return;
             }
             if (op == 5 && rs == rt) return;
@@ -248,11 +248,11 @@ public static class InstructionEmitter
             if (link)
             {
                 Ds();
-                sb.AppendLine($"{indent}c.RA = 0x{pc + 8:X8}u;");
-                sb.AppendLine($"{indent}if ({cond}) {{");
-                if (InFunc(target)) sb.AppendLine($"{ind2}goto L{target:X8};");
+                sb.AppendLine(ctx.Trail(ctrl, $"{indent}c.RA = 0x{pc + 8:X8}u;"));
+                sb.AppendLine(ctx.Trail(ctrl, $"{indent}if ({cond}) {{"));
+                if (InFunc(target)) sb.AppendLine(ctx.Trail(ctrl, $"{ind2}goto L{target:X8};"));
                 else CallOrDispatch(target, ind2);
-                sb.AppendLine($"{indent}}}");
+                sb.AppendLine(ctx.Trail(ctrl, $"{indent}}}"));
             }
             else Conditional(cond, target);
             return;
@@ -262,7 +262,7 @@ public static class InstructionEmitter
         {
             uint target = ctrl.JumpTarget;
             Ds();
-            sb.AppendLine($"{indent}c.RA = 0x{pc + 8:X8}u;");
+            sb.AppendLine(ctx.Trail(ctrl, $"{indent}c.RA = 0x{pc + 8:X8}u;"));
             CallOrDispatch(target, indent);
             return;
         }
@@ -270,35 +270,35 @@ public static class InstructionEmitter
         {
             uint target = ctrl.JumpTarget;
             Ds();
-            if (InFunc(target)) sb.AppendLine($"{indent}goto L{target:X8};");
-            else { CallOrDispatch(target, indent); sb.AppendLine($"{indent}return;"); }
+            if (InFunc(target)) sb.AppendLine(ctx.Trail(ctrl, $"{indent}goto L{target:X8};"));
+            else { CallOrDispatch(target, indent); sb.AppendLine(ctx.Trail(ctrl, $"{indent}return;")); }
             return;
         }
         if (op == 0 && fn == 8)
         {
             Ds();
-            if (rs == 31 || ctx.RaReturnJrs.Contains(pc)) sb.AppendLine($"{indent}return;");
+            if (rs == 31 || ctx.RaReturnJrs.Contains(pc)) sb.AppendLine(ctx.Trail(ctrl, $"{indent}return;"));
             else if (ctx.JumpTablesByJr.TryGetValue(pc, out var jtbl))
             {
-                sb.AppendLine($"{indent}switch ({RS})");
-                sb.AppendLine($"{indent}{{");
+                sb.AppendLine(ctx.Trail(ctrl, $"{indent}switch ({RS})"));
+                sb.AppendLine(ctx.Trail(ctrl, $"{indent}{{"));
                 foreach (uint entry in jtbl.Entries.Distinct())
-                    sb.AppendLine($"{indent}    case 0x{entry:X8}u: goto L{entry:X8};");
-                sb.AppendLine($"{indent}    default: Dispatcher.Call(c, m, {RS}); return;");
-                sb.AppendLine($"{indent}}}");
+                    sb.AppendLine(ctx.Trail(ctrl, $"{indent}    case 0x{entry:X8}u: goto L{entry:X8};"));
+                sb.AppendLine(ctx.Trail(ctrl, $"{indent}    default: Dispatcher.Call(c, m, {RS}); return;"));
+                sb.AppendLine(ctx.Trail(ctrl, $"{indent}}}"));
             }
             else
             {
-                sb.AppendLine($"{indent}Dispatcher.Call(c, m, {RS});");
-                sb.AppendLine($"{indent}return;");
+                sb.AppendLine(ctx.Trail(ctrl, $"{indent}Dispatcher.Call(c, m, {RS});"));
+                sb.AppendLine(ctx.Trail(ctrl, $"{indent}return;"));
             }
             return;
         }
         if (op == 0 && fn == 9)
         {
             Ds();
-            if (rd != 0) sb.AppendLine($"{indent}{R(rd)} = 0x{pc + 8:X8}u;");
-            sb.AppendLine($"{indent}Dispatcher.Call(c, m, {RS});");
+            if (rd != 0) sb.AppendLine(ctx.Trail(ctrl, $"{indent}{R(rd)} = 0x{pc + 8:X8}u;"));
+            sb.AppendLine(ctx.Trail(ctrl, $"{indent}Dispatcher.Call(c, m, {RS});"));
             return;
         }
         if (op == 18 && ((ctrl.Word >> 21) & 0x1F) == 8)
@@ -318,9 +318,20 @@ public sealed class FunctionContext
     public Dictionary<uint, string> KnownFunctions = [];
     public HashSet<uint> Labels = [];
     public bool Debug;
+    public bool AddressComments;
+    public bool DisasmComments;
     public Dictionary<uint, JumpTable> JumpTablesByJr = [];
     public HashSet<uint> RaReturnJrs = [];
     public MipsInstruction[] AllInstructions = [];
+
+    const int CommentColumn = 64;
+
+    public string Trail(MipsInstruction i, string line)
+    {
+        if (!AddressComments && !DisasmComments) return line;
+        string body = DisasmComments ? $"/* 0x{i.Vram:X8}  {i.Disassemble()} */" : $"/* 0x{i.Vram:X8} */";
+        return (line.Length < CommentColumn ? line.PadRight(CommentColumn) : line + "  ") + body;
+    }
     
     public uint SkipNopPadding(uint addr) //faltru can end up in padding
     {
@@ -337,5 +348,3 @@ public sealed class FunctionContext
         return addr;
     }
 }
-
-
