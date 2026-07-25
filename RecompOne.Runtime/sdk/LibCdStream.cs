@@ -103,42 +103,6 @@ public static class LibCdStream
 
     public static void StGetBackloc(CpuContext c, IMemory m) { c.V0 = 0xFFFFFFFFu; Log.Sdk("StGetBackloc"); }
 
-    public static void StGetNextS(CpuContext c, IMemory m) => StGetNext(c, m);
-
-    public static void StNextStatus(CpuContext c, IMemory m)
-    {
-        lock (_lock)
-        {
-            if (!_active || _ready.Count == 0) { c.V0 = 1; return; }
-            var (start, _) = _ready.Peek();
-            uint dataPtr = _dataBase + (uint)(start * SlotData);
-            uint hdrPtr = _statusBase + (uint)(start * HeaderSize);
-            m.WriteU32(c.A0, dataPtr);
-            m.WriteU32(c.A1, hdrPtr);
-            c.V0 = 0;
-        }
-    }
-    public static void StRingStatus(CpuContext c, IMemory m)
-    {
-        lock (_lock)
-        {
-            int busy = 0;
-            for (int i = 0; i < _busy.Length; i++) if (_busy[i]) busy++;
-            if (c.A0 != 0) m.WriteU16(c.A0, (ushort)(_slots - busy));
-            if (c.A1 != 0) m.WriteU16(c.A1, 0);
-        }
-        c.V0 = 0;
-    }
-    
-    
-    static int _channel;
-    public static void StSetChannel(CpuContext c, IMemory m) //not sure if this is correct, should it be v0?
-    {
-        _channel = (int)c.A0;
-        c.V0 = 0;
-        Log.Sdk($"StSetChannel {_channel}");
-    }
-
 
     internal static void OnReadStream(int lba)
     {

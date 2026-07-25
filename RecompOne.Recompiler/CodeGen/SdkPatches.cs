@@ -13,10 +13,7 @@ public static class SdkPatches
             "CdSync", "CdReady", "CdRead", "CdReadSync", "CdGetSector",
             "CdDataSync", "CdSearchFile", "CdSyncCallback", "CdReadyCallback",
             "CdReadCallback", "CdDataCallback", "CdStatus", "CdMode",
-            "CdLastCom", "CdMix", "CdPosToInt", "CdIntToPos", "CdGetToc",
-            "CdPlay", "CdReadFile", "CdComstr", "CdIntstr",
-            "CdDiskReady", "CdGetDiskType", "CdLastPos", "CdReadBreak",
-            "CdSetDebug", "CdFlush", "CdGetSector2", "CdRead2",
+            "CdLastCom", "CdMix",
         }),
         ("RecompOne.Runtime.Sdk.LibEtc", new[]
         {
@@ -30,7 +27,6 @@ public static class SdkPatches
         {
             "StSetRing", "StClearRing", "StUnSetRing", "StSetStream",
             "StSetMask", "StGetNext", "StFreeRing", "StGetBackloc",
-            "StGetNextS", "StNextStatus", "StRingStatus", "StSetChannel",
         }),
         ("RecompOne.Runtime.Sdk.LibPad", new[]
         {
