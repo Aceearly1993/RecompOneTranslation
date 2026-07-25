@@ -345,16 +345,22 @@ public static class BiosA
             case 0x3E: Console.Write(Bios.ReadString(m, c.A0)); c.V0 = c.A0; break;
             case 0x3F: Console.Write(Bios.FormatString(m, c, Bios.ReadString(m, c.A0))); c.V0 = 0u; break;
             case 0x40: throw new Exception("BIoS A(40h) SystemErrorUnresolvedException");
-            case 0x41: c.V0 = 0u; break;
-            case 0x42: c.V0 = 0u; break;
-            case 0x43: c.V0 = 0u; break;
+            case 0x41: c.V0 = DoLoad(m, c.A0, c.A1, false); break;
+            case 0x42: c.V0 = DoLoad(m, c.A0, c.A1, true); break;
+            case 0x43: c.V0 = DoExec(c, m, c.A0, c.A1, c.A2); break;
             case 0x44: break;
             case 0x45: break;
             case 0x46: case 0x47: case 0x48: case 0x49:
             case 0x4A: case 0x4B: case 0x4C: break;
             case 0x4D: c.V0 = 0u; break;
             case 0x4E: break;
-            case 0x51: c.V0 = 0u; break;
+            case 0x51:
+            {
+                if (DoLoad(m, c.A0, ExecHeaderScratch, true) == 0u) { c.V0 = 0u; break; }
+                if (c.A1 != 0u) { m.WriteU32(ExecHeaderScratch + 0x20u, c.A1); m.WriteU32(ExecHeaderScratch + 0x24u, c.A2); }
+                c.V0 = DoExec(c, m, ExecHeaderScratch, 0u, 0u);
+                break;
+            }
             case 0x53: case 0x54: case 0x55: case 0x56:
             case 0x5C: case 0x67: case 0x68:
             case 0x70: case 0x71: case 0x72: break;
@@ -433,6 +439,65 @@ public static class BiosA
                 
                 break;
         }
+    }
+
+    const uint ExecHeaderScratch = 0x1F800340u;
+
+    static uint DoLoad(IMemory m, uint filenamePtr, uint hdr, bool loadBody)
+    {
+        if (_fs == null) return 0u;
+        string name = CdUtils.ExtractFileName(Bios.ReadString(m, filenamePtr));
+        byte[] data;
+        try
+        {
+            string? found = _fs.FindFile(name);
+            if (found == null) return 0u;
+            data = _fs.ReadFile(found);
+        }
+        catch { return 0u; }
+        if (data.Length < 0x800 || data[0] != (byte)'P' || data[1] != (byte)'S') return 0u;
+        for (uint i = 0; i < 40u; i++) m.WriteU8(hdr + i, data[0x10 + (int)i]);
+        for (uint i = 40u; i < 60u; i++) m.WriteU8(hdr + i, 0);
+        if (loadBody)
+        {
+            uint tAddr = BitConverter.ToUInt32(data, 0x18);
+            uint tSize = BitConverter.ToUInt32(data, 0x1C);
+            for (uint i = 0; i < tSize && 0x800 + i < data.Length; i++)
+                m.WriteU8(tAddr + i, data[0x800 + (int)i]);
+            Dispatcher.TryLoad(CdUtils.OverlayName(name));
+        }
+        return hdr;
+    }
+
+    static uint DoExec(CpuContext c, IMemory m, uint hdr, uint argc, uint argv)
+    {
+        uint pc0 = m.ReadU32(hdr + 0x00u);
+        if (pc0 == 0u) return 0u;
+        uint gp0 = m.ReadU32(hdr + 0x04u);
+        uint bAddr = m.ReadU32(hdr + 0x18u);
+        uint bSize = m.ReadU32(hdr + 0x1Cu);
+        uint sAddr = m.ReadU32(hdr + 0x20u);
+        uint sSize = m.ReadU32(hdr + 0x24u);
+
+        for (uint i = 0; i < bSize; i++) m.WriteU8(bAddr + i, 0);
+
+        uint savSp = c.SP, savFp = c.FP, savGp = c.GP, savRa = c.RA;
+        uint savA0 = c.A0, savA1 = c.A1, savA2 = c.A2, savA3 = c.A3;
+
+        m.WriteU32(hdr + 0x28u, c.SP);
+        m.WriteU32(hdr + 0x2Cu, c.FP);
+        m.WriteU32(hdr + 0x30u, c.GP);
+        m.WriteU32(hdr + 0x34u, c.RA);
+
+        c.GP = gp0;
+        if (sAddr != 0u) { c.SP = sAddr + sSize; c.FP = c.SP; }
+        c.A0 = argc;
+        c.A1 = argv;
+        Dispatcher.Call(c, m, pc0);
+
+        c.SP = savSp; c.FP = savFp; c.GP = savGp; c.RA = savRa;
+        c.A0 = savA0; c.A1 = savA1; c.A2 = savA2; c.A3 = savA3;
+        return 1u;
     }
 
     static void InitHeap(uint ubase, uint size) //why is base a reserved keyword?
