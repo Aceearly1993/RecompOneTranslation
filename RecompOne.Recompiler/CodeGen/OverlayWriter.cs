@@ -411,20 +411,27 @@ public static class OverlayWriter
                 if (!string.IsNullOrEmpty(patch.Overlay) && !string.Equals(func.OverlayName, patch.Overlay, StringComparison.OrdinalIgnoreCase)) continue;
                 bool hit = addr.HasValue ? func.Start == addr.Value : string.Equals(func.Name, patch.Function, StringComparison.Ordinal);
                 if (!hit) continue;
+                matched++;
                 switch (patch.Mode.ToLowerInvariant())
                 {
                     case "pre":
-                        func.PreHookTarget = patch.Target;
+                        if (!func.PreHookTargets.Contains(patch.Target))
+                            func.PreHookTargets.Add(patch.Target);
                         break;
                     case "post":
-                        func.PostHookTarget = patch.Target;
+                        if (!func.PostHookTargets.Contains(patch.Target))
+                            func.PostHookTargets.Add(patch.Target);
                         break;
                     default:
+                        if (func.IsPatch && !string.Equals(func.PatchTarget, patch.Target, StringComparison.Ordinal))
+                        {
+                            Console.WriteLine($"[Recompiler] WARNING: '{func.Name}' @ {func.OverlayName} already replaced by '{func.PatchTarget}', ignoring '{patch.Target}'"); //logeg
+                            continue;
+                        }
                         func.IsPatch = true;
                         func.PatchTarget = patch.Target;
                         break;
                 }
-                matched++;
                 applied++;
             }
             if (matched == 0)

@@ -32,19 +32,28 @@ public static class FunctionEmitter
             sb.AppendLine($"    public static void {name}(CpuContext c, IMemory m) {{ }}");
             return sb.ToString();
         }
+        bool hooked = func.PreHookTargets.Count > 0 || func.PostHookTargets.Count > 0;
+
         if (func.IsPatch)
         {
             sb.AppendLine(noInline);
-            sb.AppendLine($"    public static void {name}(CpuContext c, IMemory m) => {func.PatchTarget}(c, m);");
+            if (!hooked)
+            {
+                sb.AppendLine($"    public static void {name}(CpuContext c, IMemory m) => {func.PatchTarget}(c, m);");
+                return sb.ToString();
+            }
+            sb.AppendLine($"    public static void {name}(CpuContext c, IMemory m)");
+            sb.AppendLine("    {");
+            EmitHooks(sb, func, $"        {func.PatchTarget}(c, m);");
+            sb.AppendLine("    }");
             return sb.ToString();
         }
-        if (func.PostHookTarget.Length > 0)
+        if (hooked)
         {
             sb.AppendLine(noInline);
             sb.AppendLine($"    public static void {name}(CpuContext c, IMemory m)");
             sb.AppendLine("    {");
-            sb.AppendLine($"        {name}_Impl(c, m);");
-            sb.AppendLine($"        {func.PostHookTarget}(c, m);");
+            EmitHooks(sb, func, $"        {name}_Impl(c, m);");
             sb.AppendLine("    }");
             name += "_Impl";
         }
@@ -52,8 +61,6 @@ public static class FunctionEmitter
         sb.AppendLine(noInline);
         sb.AppendLine($"    public static void {name}(CpuContext c, IMemory m)");
         sb.AppendLine("    {");
-        if (func.PreHookTarget.Length > 0)
-            sb.AppendLine($"        if (!RecompOne.Runtime.Context.PreHook.Run({func.PreHookTarget}, c, m)) return;");
         if (ctx.Debug)
             sb.AppendLine($"        System.Console.WriteLine(\"{func.EmittedName} @ {func.OverlayName} @ 0x{func.Start:X8}\");");
 
@@ -89,6 +96,15 @@ public static class FunctionEmitter
 
         sb.AppendLine("    }");
         return sb.ToString();
+    }
+
+    static void EmitHooks(StringBuilder sb, MipsFunction func, string body)
+    {
+        foreach (var pre in func.PreHookTargets)
+            sb.AppendLine($"        if (!RecompOne.Runtime.Context.PreHook.Run({pre}, c, m)) return;");
+        sb.AppendLine(body);
+        foreach (var post in func.PostHookTargets)
+            sb.AppendLine($"        {post}(c, m);");
     }
 
     //some hand-written asm (crt0 stubs, etc) has no jr/j/branch at its declared end at all and just
