@@ -55,7 +55,7 @@ public static class OverlayWriter
             }
 
             FunctionInfo? rawFuncMap = null;
-            if (config.FuncMap != null)
+            if (config.FuncMap != null && !config.LinearSweep)
             {
                 if (!File.Exists(config.FuncMap))
                     throw new FileNotFoundException($"Main function map not found: {config.FuncMap}");
