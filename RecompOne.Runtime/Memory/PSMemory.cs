@@ -6,11 +6,11 @@ namespace RecompOne.Runtime.Memory;
 
 public sealed class PSMemory : IMemory
 {
-    private readonly byte[] _ram = new byte[Runtime.Mode == RunMode.Devkit ? MemoryMap.DevkitRamSize : MemoryMap.RetailRamSize];
+    private readonly byte[] _ram = new byte[Runtime.Mode == RunMode.Devkit ? MemoryMap.DevkitRamSize : MemoryMap.RetailRamSize]; //should i make it able to increase psx mem?
     private readonly byte[] _scratchpad = new byte[MemoryMap.ScratchpadSize];
     private readonly byte[] _hwregs = new byte[MemoryMap.HwRegsSize];
     private readonly byte[] _bios = new byte[MemoryMap.BiosSize];
-
+  
     private readonly Gpu _gpu = new();
     private readonly Spu _spu = new();
     private readonly Mdec _mdec = new();
@@ -20,6 +20,10 @@ public sealed class PSMemory : IMemory
 
     public ReadOnlySpan<byte> Ram => _ram;
     internal byte[] RamBuffer => _ram;
+    
+    //memory can be frozen for debuging reasons
+    private readonly bool[] _frozen = new bool[Runtime.Mode == RunMode.Devkit ? MemoryMap.DevkitRamSize : MemoryMap.RetailRamSize];
+    private int _frozenCount;
 
     public PSMemory()
     {
@@ -127,6 +131,8 @@ public sealed class PSMemory : IMemory
         uint phys = MemoryMap.ToPhysical(address);
         TrackWrite(phys, 1);
         if (_cd != null && IsCd(phys)) { _cd.Write(phys, value); return; }
+
+        if (_frozenCount > 0 && phys < MemoryMap.RamWindow && _frozen[phys % (uint)_ram.Length]) return;
         Resolve(address, 1)[0] = value;
     }
 
@@ -138,6 +144,14 @@ public sealed class PSMemory : IMemory
         if (IsSpu(phys)) { _spu.WriteReg16(phys, value); return; }
         if (_timers.TryWrite(phys, value)) return;
         var s = Resolve(address, 2);
+
+        if (_frozenCount > 0 && phys < MemoryMap.RamWindow)
+        {
+            uint b = phys % (uint)_ram.Length;
+            if(!_frozen[b])   s[0] = (byte)value;
+            if(!_frozen[b+1]) s[1] = (byte)(value >> 8);
+            return;
+        }
         s[0] = (byte)value;
         s[1] = (byte)(value >> 8);
     }
@@ -161,6 +175,15 @@ public sealed class PSMemory : IMemory
         if (IsSpu(phys)) { _spu.WriteReg16(phys, (ushort)value); _spu.WriteReg16(phys + 2, (ushort)(value >> 16)); return; }
         if (_timers.TryWrite(phys, value)) return;
         var s = Resolve(address, 4);
+        if (_frozenCount > 0 && phys < MemoryMap.RamWindow)
+        {
+            uint b = phys % (uint)_ram.Length;
+            if(!_frozen[b])   s[0] = (byte)value;
+            if(!_frozen[b+1]) s[1] = (byte)(value >> 8);
+            if(!_frozen[b+2]) s[2] = (byte)(value >> 16);
+            if(!_frozen[b+3]) s[3] = (byte)(value >> 24);
+            return;
+        }
         s[0] = (byte)value;
         s[1] = (byte)(value >> 8);
         s[2] = (byte)(value >> 16);
@@ -208,4 +231,41 @@ public sealed class PSMemory : IMemory
         for (uint i = 0; i < length; i++)
             WriteU8(address + i, 0);
     }
+
+    public bool IsFrozen(uint off) => _frozenCount > 0 && _frozen[off % (uint)_frozen.Length];
+
+    public void Freeze(uint off, int len)
+    {
+        for (int i = 0; i < len; i++)
+        {
+            uint o = (off + (uint)i) % (uint)_frozen.Length;
+            if (!_frozen[o])
+            {
+                _frozen[o] = true;
+                _frozenCount++;
+            }
+        }
+    }
+    public void Unfreeze(uint off, int len)
+    {
+        for (int i = 0; i < len; i++)
+        {
+            uint o = (off + (uint)i) % (uint)_frozen.Length;
+            if (_frozen[o])
+            {
+                _frozen[o] = false;
+                _frozenCount--;
+            }
+        }
+    }
+
+    public void ClearFreezes()
+    {
+        if (_frozenCount == 0) return;
+        System.Array.Clear(_frozen, 0, _frozen.Length);
+        _frozenCount = 0;
+    }
+
+    public void Poke(uint off, byte val) => _ram[off % (uint)_ram.Length] = val;
+    
 }

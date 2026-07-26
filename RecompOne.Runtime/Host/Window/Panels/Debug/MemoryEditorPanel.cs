@@ -19,6 +19,16 @@ internal sealed class MemoryEditorPanel : IPanel
     int _editAddr = -1;
     string _editBuf = "";
     bool _editFocusPending;
+    
+    int _selStart = -1, _selEnd = -1;
+    private bool _selecting;
+
+    (int lo, int hi) Sel() => _selStart < 0 ? (-1, -1) : (Math.Min(_selStart, _selEnd), Math.Max(_selStart, _selEnd));
+    bool InSelection(int idx) { var (lo, hi) = Sel(); return lo >= 0 && idx >= lo && idx <= hi; }
+    static uint Rgba(float r, float g, float b, float a) => ((uint)(a * 255) << 24) | ((uint)(b * 255) << 16) | ((uint)(g * 255) << 8) | (uint)(r * 255);
+    static readonly uint FrozenBg = Rgba(1f, 0.35f, 0.7f, 0.55f);
+    static readonly uint SelBg = Rgba(0.35f, 0.55f, 1f, 0.35f);
+
 
     public void JumpTo(uint physAddr)
     {
@@ -59,7 +69,7 @@ internal sealed class MemoryEditorPanel : IPanel
         ImGui.SameLine();
         ImGui.TextDisabled("Go to address (hex)");
         ImGui.SameLine();
-        ImGui.Spacing(); //space is enug
+        ImGui.Spacing(); //space is enug <- good english right here
         ImGui.SameLine();
         ImGui.TextDisabled("Click a byte to edit");
     }
@@ -102,8 +112,27 @@ internal sealed class MemoryEditorPanel : IPanel
         if (remaining > 0f)
             ImGui.Dummy(new Vector2(1f, remaining));
 
+        if (ImGui.IsMouseReleased(ImGuiMouseButton.Left)) _selecting = false;
+
+        DrawContextMenu(mem);
+
         ImGui.EndChild();
         ImGui.PopStyleVar();
+    }
+
+    void DrawContextMenu(PSMemory mem)
+    {
+        if (!ImGui.BeginPopup("memctx")) return;
+        var (lo, hi) = Sel();
+        int len = lo < 0 ? 0 : hi - lo + 1;
+        if (len > 0)
+        {
+            if (ImGui.MenuItem($"Freeze {len} byte(s)")) mem.Freeze((uint)lo, len);
+            if (ImGui.MenuItem("Unfreeze")) mem.Unfreeze((uint)lo, len);
+            ImGui.Separator();
+        }
+        if (ImGui.MenuItem("Clear all freezes")) mem.ClearFreezes();
+        ImGui.EndPopup();
     }
 
     static readonly StringBuilder _asciiSb = new(BytesPerRow);
@@ -128,7 +157,7 @@ internal sealed class MemoryEditorPanel : IPanel
             if (idx == _editAddr)
                 DrawEditCell(mem, idx);
             else
-                DrawByteCell(log, idx, b);
+                DrawByteCell(mem, log, idx, b);
 
             if (col < BytesPerRow - 1)
             {
@@ -145,8 +174,16 @@ internal sealed class MemoryEditorPanel : IPanel
         ImGuiEx.TextDisabled($"  {_asciiSb}");
     }
 
-    void DrawByteCell(RamLogger log, int idx, byte b)
+    void DrawByteCell(PSMemory mem, RamLogger log, int idx, byte b)
     {
+        bool frozen = mem.IsFrozen((uint)idx);
+        if (frozen || InSelection(idx))
+        {
+            var pos = ImGui.GetCursorScreenPos();
+            var sz = ImGui.CalcTextSize("FF");
+            ImGui.GetWindowDrawList().AddRectFilled(pos, new Vector2(pos.X + sz.X, pos.Y + sz.Y), frozen ? FrozenBg : SelBg);
+        }
+
         float wHeat = log.HeatAt(idx);
         float rHeat = log.ReadHeatAt(idx);
 
@@ -167,6 +204,17 @@ internal sealed class MemoryEditorPanel : IPanel
         else
         {
             ImGui.Text($"{b:X2}");
+        }
+
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem))
+        {
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left)) { _selStart = _selEnd = idx; _selecting = true; }
+            else if (_selecting && ImGui.IsMouseDown(ImGuiMouseButton.Left) && idx != _selEnd) { _selEnd = idx; _editAddr = -1; }
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+            {
+                if (!InSelection(idx)) _selStart = _selEnd = idx;
+                ImGui.OpenPopup("memctx");
+            }
         }
 
         if (ImGui.IsItemClicked())
@@ -225,7 +273,7 @@ internal sealed class MemoryEditorPanel : IPanel
         if (byte.TryParse(_editBuf, NumberStyles.HexNumber, null, out byte val))
         {
             if (idx < mem.Ram.Length && mem.Ram[idx] != val)
-                mem.WriteU8(0x80000000u + (uint)idx, val);
+                mem.Poke((uint)idx, val);
         }
     }
 }
