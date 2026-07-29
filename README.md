@@ -4,12 +4,12 @@
   <img src="https://github.com/user-attachments/assets/6d9a8f86-322c-4cd2-a3d3-ba68ba2d37e9" alt="logo" width="400">
 </p>
 
-
-RecompOne is a tool to statically recompile PlayStation 1 executables into C# code. it also provides a runtime layer that translates the PS1 hardware environment into something modern PCs can run natively
+RecompOne is a tool to statically recompile PlayStation 1 executables into C# code. it also provides a runtime layer that translates the PS1 hardware environment into something modern PCs can run natively.
 
 This project is inspired by [N64Recomp](https://github.com/N64Recomp/N64Recomp) and [XenonRecomp](https://github.com/hedge-dev/XenonRecomp), which are similar tools for N64 and Xbox 360 respectively
 
-We have a discord server too: https://discord.gg/65g8ZEPnbR
+[![Discord](https://discord.com/api/guilds/1525942688728481983/widget.png?style=banner2)](https://discord.gg/65g8ZEPnbR)
+
 
 ## How it works
 
@@ -35,44 +35,26 @@ becomes:
 c.T0 = mem.Read32(c.SP + 0x10u);
 ```
 
-the runtime, like an emulator, simulates the behaviour the game expects like the BIOS functions, MMIO, GPU drawing commands, CD-ROM, and so on, it also provides reimplementation of some libraries from psyq, since the ones that heavily rely on interrupts dont work properly under the recompiler
+The runtime simulates what the game expects such as BIOS functions, MMIO, GPU commands, CD-ROM, and so on, simillar to an emulator but unlike one no BIOS or other proprietary files are required. only the game files are needed to run it. RecompOne does not dependend on Sony components.
 
-## Overlays
+## Building
 
-PS1 games use overlays since the ps1 ram is extremly limited, so the gane load and unload code and data into the same memory region as needed
+RecompOne is a .NET project, You'll need the [.NET SDK 10](https://dotnet.microsoft.com/download) installed, then you can compile and run the recompiler, the runtime is not supposed to be ran, its a library that you have to include in your recompiled game.
 
-each overlay is defined in the config file, during recompilation a separate class is generated for every overlay along with an overlay dispatch table
-the dispatcher tracks which overlays are currently loaded at runtime and updates the function mappings as needed. this is needed because different overlays can occupy the same VRAM address range at different times, the runtime loads and unload then as needed so that every virtual address always resolves to the correct recompiled function
+## How do i create a port?
 
-## patches
-
-You can provide Patches that will replace a function entirely
-
-patches are registered in the recomp config
-```json
-{ "address": "800553C4", "name": "MyPatch.MyClass.MyMethod" }
-```
-The patch class itself lives in the recompiled project, you need to create an file and implement the patched functions, then redirect them
-
-this is for providing "base mods" for the game, like fixing functions the recompiler cant deal with (like self modifying code) or simple qol features
-
-## Creating a recompilation
-
-refer to the [wiki](https://github.com/BlackLabelHQ/RecompOne/wiki)
-
-## TODO
-- [ ] **MultiDisc games** current implementation doesnt deal with games that have multiple discs (should be an relatively easy implementation)
+Creating a port for a game is an involved process, but you can find instructions on how to get started on [our wiki](https://github.com/BlackLabelHQ/RecompOne/wiki/How-to-recompile-a-game%3F)
 
 ## Contributing
 
-any contributions are welcome, This project started mainly as an hobby and i didnt expect to get something that works, but there is still a long way until this tool becomes something as mature as N64Recomp and similar tools, I woundnt say this tool is ready to make actual recomps but it can boot games
+Contributions are welcome. Bug reports, feature suggestions, and code are all appreciated.
 
-Currently im the only mantainer of the project and my free time is limited, my coding skills also arent perfect, so any help is more than welcome, be it as bug reports, feature suggestions or actual code
+Currently i'm the only maintainer, so my available time is limited. if you submit a PR please ensure it's solid code you can stand behind, any form of AI-generated PRs will not be accepted.
 
 ## Stance on AI
 
-This project is not vibe-coded. AI was not involved in writing the code! AI PRs will be rejected.
+This project is proudly made by humans. AI was not involved in writing the code, and it never will be. AI PRs will be rejected, no exceptions.
 
-This project does not support vibe-coded ports. Ai can be a useful research tool, but it does not replace the human judgment needed to understand and correctly implement what you are building
+This project does not support vibe-coded ports. AI can be a useful research tool, but it does not replace the human judgment needed to understand and correctly implement what you are building. **Code you don't understand is not code you wrote**.
 
-You do you but I will not provide help for ports produced that way
+You do you, but we will not provide help or promote ports produced that way.
