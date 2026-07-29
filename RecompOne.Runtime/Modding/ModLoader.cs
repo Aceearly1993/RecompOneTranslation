@@ -8,48 +8,63 @@ using RecompOne.Runtime.Host;
 
 namespace RecompOne.Runtime.Modding;
 
+public sealed class ModEntry
+{
+    public ModInfo Info = null!;
+    public bool Enabled;
+    public bool Loaded;
+    public int HookCount;
+    public byte[]? IconData;
+    internal bool IsZip;
+    internal List<(string Path, string Text)> Sources = [];
+    internal AssemblyLoadContext? Alc;
+    internal IMod[] Instances = [];
+}
+
 public static class ModLoader
 {
-    sealed record Candidate(ModInfo Info, List<(string Path, string Text)> Sources);
-    static readonly List<(ModInfo Info, IMod[] Instances)> _loaded = [];
+    static readonly List<ModEntry> _mods = [];
+    static string _cacheDir = "";
     static readonly JsonSerializerOptions _json = new()
     {
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true
     };
-    
-    public static IReadOnlyList<ModInfo> LoadedMods
+
+    public static IReadOnlyList<ModEntry> Mods
     {
-        get { lock (_loaded) return _loaded.Select(l => l.Info).ToArray(); }
+        get { lock (_mods) return _mods.ToArray(); }
     }
 
+    public static IReadOnlyList<ModInfo> LoadedMods
+    {
+        get { lock (_mods) return _mods.Where(m => m.Loaded).Select(m => m.Info).ToArray(); }
+    }
 
     public static void LoadAll(string? root = null)
     {
         root ??= Path.GetFullPath("mods");
         Directory.CreateDirectory(root);
+        _cacheDir = Path.Combine(root, ".cache");
 
-        var candidates = Discover(root);
-        if (candidates.Count == 0) return;
+        var discovered = Order(Discover(root));
+        lock (_mods) { _mods.Clear(); _mods.AddRange(discovered); }
+        foreach (var e in discovered) e.Enabled = IsEnabled(e.Info.Id);
 
-        var ordered = Order(candidates);
-        if (ordered.Count == 0) return;
+        var toLoad = discovered.Where(e => e.Enabled).ToList();
+        if (toLoad.Count == 0) return;
 
-        var cacheDir = Path.Combine(root, ".cache");
+        ModLoadingPopup.Begin(toLoad.Count);
 
-        ModLoadingPopup.Begin(ordered.Count);
-
-        //load on back thread
         var work = Task.Run(() =>
         {
-            for (int i = 0; i < ordered.Count; i++)
+            for (int i = 0; i < toLoad.Count; i++)
             {
-                Console.WriteLine($"[Mods] loading {ordered[i].Info.Name}");
-                ModLoadingPopup.Update(i, ordered[i].Info.Name);
-                LoadMod(ordered[i], cacheDir);
+                ModLoadingPopup.Update(i, toLoad[i].Info.Name);
+                LoadEntry(toLoad[i]);
             }
-            ModLoadingPopup.Update(ordered.Count, "");
+            ModLoadingPopup.Update(toLoad.Count, "");
             try { HookManager.Commit(); }
             catch (Exception ex) { Console.Error.WriteLine($"[Mods] hook install failed: {ex.Message}"); }
         });
@@ -61,12 +76,59 @@ public static class ModLoader
         }
         ModLoadingPopup.End();
 
-        Console.WriteLine($"[Mods] loaded {_loaded.Count}/{ordered.Count} mod(s), {HookManager.HookedFunctionCount} function(s) hooked");
+        Console.WriteLine($"[Mods] loaded {toLoad.Count(e => e.Loaded)}/{toLoad.Count} mod(s), {HookManager.HookedFunctionCount} function(s) hooked");
     }
 
-    static List<Candidate> Discover(string root)
+    public static void SetEnabled(string id, bool enabled)
     {
-        var list = new List<Candidate>();
+        var entry = Find(id);
+        if (entry == null) return;
+        entry.Enabled = enabled;
+        SaveEnabled(id, enabled);
+
+        if (enabled && !entry.Loaded)
+        {
+            LoadEntry(entry);
+            SafeCommit();
+        }
+        else if (!enabled && entry.Loaded)
+        {
+            UnloadEntry(entry);
+        }
+    }
+
+    public static void Reload(string id)
+    {
+        var entry = Find(id);
+        if (entry == null || !entry.Enabled) return;
+        if (entry.Loaded) UnloadEntry(entry);
+        entry.Sources = ReadSources(entry.Info.SourcePath, entry.IsZip);
+        LoadEntry(entry);
+        SafeCommit();
+    }
+
+    static void SafeCommit()
+    {
+        try { HookManager.Commit(); }
+        catch (Exception ex) { Console.Error.WriteLine($"[Mods] hook install failed: {ex.Message}"); }
+    }
+
+    static ModEntry? Find(string id)
+    {
+        lock (_mods) return _mods.FirstOrDefault(m => string.Equals(m.Info.Id, id, StringComparison.OrdinalIgnoreCase));
+    }
+
+    static bool IsEnabled(string id) => RecompOne.Runtime.Runtime.View.GetBool($"mods.{id}.enabled", true);
+
+    static void SaveEnabled(string id, bool enabled)
+    {
+        RecompOne.Runtime.Runtime.View.SetBool($"mods.{id}.enabled", enabled);
+        RecompOne.Runtime.Runtime.SaveView();
+    }
+
+    static List<ModEntry> Discover(string root)
+    {
+        var list = new List<ModEntry>();
 
         foreach (var dir in Directory.EnumerateDirectories(root))
         {
@@ -79,41 +141,40 @@ public static class ModLoader
             }
             var info = ParseInfo(File.ReadAllText(jsonPath), dir);
             if (info == null) continue;
-
-            var sources = new List<(string, string)>();
-            foreach (var file in Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories))
+            list.Add(new ModEntry
             {
-                var rel = Path.GetRelativePath(dir, file);
-                if (rel.Split(Path.DirectorySeparatorChar).Any(p => p is "obj" or "bin" || p.StartsWith('.'))) continue;
-                sources.Add((file, File.ReadAllText(file)));
-            }
-            list.Add(new Candidate(info, sources));
+                Info = info,
+                IsZip = false,
+                Sources = ReadSources(dir, false),
+                IconData = LoadIcon(dir, false),
+            });
         }
 
         foreach (var zipPath in Directory.EnumerateFiles(root, "*.zip"))
         {
             try
             {
-                using var zip = ZipFile.OpenRead(zipPath);
-                var entry = zip.GetEntry("mod.json");
-                if (entry == null)
+                string? json;
+                using (var zip = ZipFile.OpenRead(zipPath))
                 {
-                    Console.Error.WriteLine($"[Mods] mod.json not found for {Path.GetFileName(zipPath)}, skipping");
-                    continue;
+                    var entry = zip.GetEntry("mod.json");
+                    if (entry == null)
+                    {
+                        Console.Error.WriteLine($"[Mods] mod.json not found for {Path.GetFileName(zipPath)}, skipping");
+                        continue;
+                    }
+                    using var reader = new StreamReader(entry.Open());
+                    json = reader.ReadToEnd();
                 }
-                using var reader = new StreamReader(entry.Open());
-                var info = ParseInfo(reader.ReadToEnd(), zipPath);
+                var info = ParseInfo(json, zipPath);
                 if (info == null) continue;
-
-                var sources = new List<(string, string)>();
-                foreach (var e in zip.Entries)
+                list.Add(new ModEntry
                 {
-                    if (!e.FullName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (e.FullName.Split('/').Any(p => p is "obj" or "bin" || p.StartsWith('.'))) continue;
-                    using var sr = new StreamReader(e.Open());
-                    sources.Add((e.FullName, sr.ReadToEnd()));
-                }
-                list.Add(new Candidate(info, sources));
+                    Info = info,
+                    IsZip = true,
+                    Sources = ReadSources(zipPath, true),
+                    IconData = LoadIcon(zipPath, true),
+                });
             }
             catch (Exception ex)
             {
@@ -122,6 +183,61 @@ public static class ModLoader
         }
 
         return list;
+    }
+
+    static List<(string, string)> ReadSources(string sourcePath, bool isZip)
+    {
+        var sources = new List<(string, string)>();
+        try
+        {
+            if (isZip)
+            {
+                using var zip = ZipFile.OpenRead(sourcePath);
+                foreach (var e in zip.Entries)
+                {
+                    if (!e.FullName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (e.FullName.Split('/').Any(p => p is "obj" or "bin" || p.StartsWith('.'))) continue;
+                    using var sr = new StreamReader(e.Open());
+                    sources.Add((e.FullName, sr.ReadToEnd()));
+                }
+            }
+            else
+            {
+                foreach (var file in Directory.EnumerateFiles(sourcePath, "*.cs", SearchOption.AllDirectories))
+                {
+                    var rel = Path.GetRelativePath(sourcePath, file);
+                    if (rel.Split(Path.DirectorySeparatorChar).Any(p => p is "obj" or "bin" || p.StartsWith('.'))) continue;
+                    sources.Add((file, File.ReadAllText(file)));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Mods] failed to read sources for {Path.GetFileName(sourcePath)}: {ex.Message}");
+        }
+        return sources;
+    }
+
+    const string IconName = "mod-icon.png";
+
+    static byte[]? LoadIcon(string sourcePath, bool isZip)
+    {
+        try
+        {
+            if (isZip)
+            {
+                using var zip = ZipFile.OpenRead(sourcePath);
+                var e = zip.GetEntry(IconName);
+                if (e == null) return null;
+                using var s = e.Open();
+                using var ms = new MemoryStream();
+                s.CopyTo(ms);
+                return ms.ToArray();
+            }
+            var path = Path.Combine(sourcePath, IconName);
+            return File.Exists(path) ? File.ReadAllBytes(path) : null;
+        }
+        catch { return null; }
     }
 
     static ModInfo? ParseInfo(string json, string sourcePath)
@@ -145,9 +261,9 @@ public static class ModLoader
         }
     }
 
-    static List<Candidate> Order(List<Candidate> mods)
+    static List<ModEntry> Order(List<ModEntry> mods)
     {
-        var byId = new Dictionary<string, Candidate>(StringComparer.OrdinalIgnoreCase);
+        var byId = new Dictionary<string, ModEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var mod in mods)
         {
             if (!byId.TryAdd(mod.Info.Id, mod))
@@ -165,7 +281,7 @@ public static class ModLoader
             }
         }
 
-        var result = new List<Candidate>();
+        var result = new List<ModEntry>();
         var placed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         while (queue.Count > 0)
         {
@@ -183,21 +299,21 @@ public static class ModLoader
         return result;
     }
 
-    static void LoadMod(Candidate mod, string cacheDir)
+    static void LoadEntry(ModEntry mod)
     {
         try
         {
+            if (mod.Loaded) return;
             if (mod.Sources.Count == 0)
             {
                 Console.Error.WriteLine($"[Mods] {mod.Info.Id}: no source files, skipping");
                 return;
             }
 
-            var cachePath = Path.Combine(cacheDir, $"{mod.Info.Id}-{CacheKey(mod)}.dll");
+            var cachePath = Path.Combine(_cacheDir, $"{mod.Info.Id}-{CacheKey(mod.Info, mod.Sources)}.dll");
             byte[]? bytes;
             if (File.Exists(cachePath))
             {
-                Console.WriteLine($"[Mods] {mod.Info.Id} is already cached");
                 bytes = File.ReadAllBytes(cachePath);
             }
             else
@@ -207,8 +323,8 @@ public static class ModLoader
                 if (bytes == null) return;
                 try
                 {
-                    Directory.CreateDirectory(cacheDir);
-                    foreach (var stale in Directory.EnumerateFiles(cacheDir, $"{mod.Info.Id}-*.dll"))
+                    Directory.CreateDirectory(_cacheDir);
+                    foreach (var stale in Directory.EnumerateFiles(_cacheDir, $"{mod.Info.Id}-*.dll"))
                         File.Delete(stale);
                     File.WriteAllBytes(cachePath, bytes);
                 }
@@ -218,19 +334,43 @@ public static class ModLoader
                 }
             }
 
-            var alc = new AssemblyLoadContext($"mod-{mod.Info.Id}", isCollectible: true);
-            using var ms = new MemoryStream(bytes);
-            var asm = alc.LoadFromStream(ms);
+            var alc = new AssemblyLoadContext($"mod-{mod.Info.Id}-{Guid.NewGuid():N}", isCollectible: true);
+            Assembly asm;
+            using (var ms = new MemoryStream(bytes)) asm = alc.LoadFromStream(ms);
 
-            int hooks = RegisterHooks(mod.Info, asm);
-            var instances = CreateInstances(mod.Info, asm);
-            lock (_loaded) _loaded.Add((mod.Info, instances));
-            foreach (var inst in instances) inst.OnLoad();
-            Console.WriteLine($"[Mods] {mod.Info.Id} v{mod.Info.Version}: {hooks} hook(s)");
+            mod.HookCount = RegisterHooks(mod.Info, asm);
+            mod.Instances = CreateInstances(mod.Info, asm);
+            mod.Alc = alc;
+            mod.Loaded = true;
+            foreach (var inst in mod.Instances) inst.OnLoad();
+            Console.WriteLine($"[Mods] {mod.Info.Id} v{mod.Info.Version}: {mod.HookCount} hook(s)");
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[Mods] failed to load {mod.Info.Id}: {ex.Message}");
+        }
+    }
+
+    static void UnloadEntry(ModEntry mod)
+    {
+        try
+        {
+            foreach (var inst in mod.Instances)
+            {
+                try { inst.OnUnload(); }
+                catch (Exception ex) { Console.Error.WriteLine($"[Mods] {mod.Info.Id}: OnUnload failed: {ex.Message}"); }
+            }
+            HookManager.RemoveMod(mod.Info);
+            mod.Instances = [];
+            mod.HookCount = 0;
+            mod.Loaded = false;
+            mod.Alc?.Unload();
+            mod.Alc = null;
+            Console.WriteLine($"[Mods] {mod.Info.Id}: unloaded");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Mods] failed to unload {mod.Info.Id}: {ex.Message}");
         }
     }
 
@@ -261,13 +401,13 @@ public static class ModLoader
         return count;
     }
 
-    static string CacheKey(Candidate mod)
+    static string CacheKey(ModInfo info, List<(string Path, string Text)> sources)
     {
         var sb = new StringBuilder();
         sb.Append(typeof(ModLoader).Assembly.ManifestModule.ModuleVersionId);
         var entry = Assembly.GetEntryAssembly();
         if (entry != null) sb.Append(entry.ManifestModule.ModuleVersionId);
-        foreach (var (path, text) in mod.Sources.OrderBy(s => s.Path, StringComparer.Ordinal))
+        foreach (var (path, text) in sources.OrderBy(s => s.Path, StringComparer.Ordinal))
         {
             sb.Append(Path.GetFileName(path));
             sb.Append(text);

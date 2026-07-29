@@ -16,6 +16,8 @@ public sealed class ModInfo
     /// <summary>Author of the mod</summary>
     [JsonPropertyName("author")] public string Author { get; set; } = "";
 
+    [JsonPropertyName("description")] public string Description { get; set; } = "";
+
     /// <summary>Ids of mods that must load before this one</summary>
     [JsonPropertyName("dependencies")] public string[] Dependencies { get; set; } = [];
 

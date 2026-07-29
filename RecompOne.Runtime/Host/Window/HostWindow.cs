@@ -309,6 +309,27 @@ public static class HostWindow
         _gl?.DeleteTexture(_ramTex);
     }
 
+    public static uint UploadPng(byte[] png)
+    {
+        try
+        {
+            var img = StbImageSharp.ImageResult.FromMemory(png, StbImageSharp.ColorComponents.RedGreenBlueAlpha);
+            if (img == null || img.Width <= 0 || img.Height <= 0) return 0;
+
+            int w = img.Width, h = img.Height;
+            if (w == h) return UploadTexture(img.Data, w, h);
+
+            int s = Math.Min(w, h);
+            int ox = (w - s) / 2;
+            int oy = (h - s) / 2;
+            var square = new byte[s * s * 4];
+            for (int y = 0; y < s; y++)
+                Array.Copy(img.Data, ((oy + y) * w + ox) * 4, square, y * s * 4, s * 4);
+            return UploadTexture(square, s, s);
+        }
+        catch { return 0; }
+    }
+
     public static uint UploadTexture(byte[] rgba, int width, int height)
     {
         if (_gl == null || width <= 0 || height <= 0) return 0;

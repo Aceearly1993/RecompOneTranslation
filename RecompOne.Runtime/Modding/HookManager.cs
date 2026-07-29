@@ -7,21 +7,46 @@ namespace RecompOne.Runtime.Modding;
 
 public static class HookManager
 {
+    sealed class Entry<T>
+    {
+        public ModInfo Mod = null!;
+        public T Fn = default!;
+    }
+
     sealed class FunctionHooks
     {
-        public readonly List<Func<CpuContext, IMemory, bool>> Pres = [];
-        public readonly List<Action<CpuContext, IMemory>> Posts = [];
+        public Entry<Func<CpuContext, IMemory, bool>>[] Pres = [];
+        public Entry<Action<CpuContext, IMemory>>[] Posts = [];
         public Action<Action<CpuContext, IMemory>, CpuContext, IMemory>? Replace;
         public ModInfo? ReplaceOwner;
         public Hook? Hook;
+
+        public bool Empty => Pres.Length == 0 && Posts.Length == 0 && Replace == null;
     }
 
     static readonly Dictionary<MethodInfo, FunctionHooks> _hooks = [];
+    static readonly object _gate = new();
 
     static readonly Type[] SigBasic = [typeof(CpuContext), typeof(IMemory)];
     static readonly Type[] SigOrig = [typeof(Action<CpuContext, IMemory>), typeof(CpuContext), typeof(IMemory)];
-    public static int HookedFunctionCount => _hooks.Count;
-    
+
+    public static int HookedFunctionCount { get { lock (_gate) return _hooks.Count; } }
+
+    public static int CountForMod(ModInfo mod)
+    {
+        lock (_gate)
+        {
+            int n = 0;
+            foreach (var (_, h) in _hooks)
+            {
+                foreach (var p in h.Pres) if (p.Mod == mod) n++;
+                foreach (var p in h.Posts) if (p.Mod == mod) n++;
+                if (h.ReplaceOwner == mod) n++;
+            }
+            return n;
+        }
+    }
+
     public static bool AddReplace(ModInfo mod, MethodInfo target, MethodInfo impl)
     {
         Action<Action<CpuContext, IMemory>, CpuContext, IMemory> replace;
@@ -38,17 +63,20 @@ public static class HookManager
             return false;
         }
 
-        var hooks = Get(target);
-        if (hooks.ReplaceOwner != null)
+        lock (_gate)
         {
-            Console.Error.WriteLine($"[Mods] replace conflict on {target.Name}: {mod.Id} ignored, {hooks.ReplaceOwner.Id} already owns it");
-            return false;
+            var hooks = Get(target);
+            if (hooks.ReplaceOwner != null)
+            {
+                Console.Error.WriteLine($"[Mods] replace conflict on {target.Name}: {mod.Id} ignored, {hooks.ReplaceOwner.Id} already owns it");
+                return false;
+            }
+            hooks.Replace = replace;
+            hooks.ReplaceOwner = mod;
         }
-        hooks.Replace = replace;
-        hooks.ReplaceOwner = mod;
         return true;
     }
-    
+
     public static bool AddPre(ModInfo mod, MethodInfo target, MethodInfo impl)
     {
         Func<CpuContext, IMemory, bool> pre;
@@ -64,10 +92,14 @@ public static class HookManager
             Console.Error.WriteLine($"[Mods] {mod.Id}: invalid pre hook signature on {Describe(impl)}");
             return false;
         }
-        Get(target).Pres.Add(pre);
+        lock (_gate)
+        {
+            var hooks = Get(target);
+            hooks.Pres = [.. hooks.Pres, new Entry<Func<CpuContext, IMemory, bool>> { Mod = mod, Fn = pre }];
+        }
         return true;
     }
-    
+
     public static bool AddPost(ModInfo mod, MethodInfo target, MethodInfo impl)
     {
         if (!Matches(impl, typeof(void), SigBasic))
@@ -75,33 +107,69 @@ public static class HookManager
             Console.Error.WriteLine($"[Mods] {mod.Id}: invalid post hook signature on {Describe(impl)}");
             return false;
         }
-        Get(target).Posts.Add(impl.CreateDelegate<Action<CpuContext, IMemory>>());
+        var post = impl.CreateDelegate<Action<CpuContext, IMemory>>();
+        lock (_gate)
+        {
+            var hooks = Get(target);
+            hooks.Posts = [.. hooks.Posts, new Entry<Action<CpuContext, IMemory>> { Mod = mod, Fn = post }];
+        }
         return true;
     }
-    
+
+    public static void RemoveMod(ModInfo mod)
+    {
+        lock (_gate)
+        {
+            foreach (var target in _hooks.Keys.ToArray())
+            {
+                var hooks = _hooks[target];
+                hooks.Pres = hooks.Pres.Where(p => p.Mod != mod).ToArray();
+                hooks.Posts = hooks.Posts.Where(p => p.Mod != mod).ToArray();
+                if (hooks.ReplaceOwner == mod)
+                {
+                    hooks.Replace = null;
+                    hooks.ReplaceOwner = null;
+                }
+                if (hooks.Empty)
+                {
+                    hooks.Hook?.Dispose();
+                    hooks.Hook = null;
+                    _hooks.Remove(target);
+                }
+            }
+        }
+    }
+
     public static void Commit()
     {
-        foreach (var (target, hooks) in _hooks)
+        lock (_gate)
         {
-            if (hooks.Hook != null) continue;
-            var state = hooks;
-            hooks.Hook = new Hook(target,
-                (Action<Action<CpuContext, IMemory>, CpuContext, IMemory>)((orig, c, m) => Invoke(state, orig, c, m)));
+            foreach (var (target, hooks) in _hooks)
+            {
+                if (hooks.Hook != null) continue;
+                var state = hooks;
+                hooks.Hook = new Hook(target,
+                    (Action<Action<CpuContext, IMemory>, CpuContext, IMemory>)((orig, c, m) => Invoke(state, orig, c, m)));
+            }
         }
     }
 
     static void Invoke(FunctionHooks hooks, Action<CpuContext, IMemory> orig, CpuContext c, IMemory m)
     {
+        var pres = hooks.Pres;
+        var posts = hooks.Posts;
+        var replace = hooks.Replace;
+
         bool skip = false;
-        for (int i = 0; i < hooks.Pres.Count; i++)
-            if (!hooks.Pres[i](c, m)) skip = true;
+        for (int i = 0; i < pres.Length; i++)
+            if (!pres[i].Fn(c, m)) skip = true;
         if (!skip)
         {
-            if (hooks.Replace != null) hooks.Replace(orig, c, m);
+            if (replace != null) replace(orig, c, m);
             else orig(c, m);
         }
-        for (int i = 0; i < hooks.Posts.Count; i++)
-            hooks.Posts[i](c, m);
+        for (int i = 0; i < posts.Length; i++)
+            posts[i].Fn(c, m);
     }
 
     static FunctionHooks Get(MethodInfo target)
