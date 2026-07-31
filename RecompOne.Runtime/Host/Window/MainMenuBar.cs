@@ -9,10 +9,9 @@ internal static class MainMenuBar
     {
 
         ConfigMenu();
+        MenuRegistry.DrawMenus();
         ModsMenu();
         DebugMenu();
-        HelpMenu();
-        MenuRegistry.DrawMenus();
         ImGui.EndMainMenuBar();
     }
 
@@ -97,15 +96,6 @@ internal static class MainMenuBar
 
         if (ImGui.MenuItem("Reset View")) ConfigManager.ResetView(PanelManager.Panels);
         
-        ImGui.EndMenu();
-    }
-
-    static void HelpMenu()
-    {
-        if (!ImGui.BeginMenu("Help")) return;
-        if (ImGui.MenuItem("About"))
-            if (PanelManager.Get<AboutPopup>() is { } about) about.IsOpen = true;
-
         ImGui.EndMenu();
     }
 

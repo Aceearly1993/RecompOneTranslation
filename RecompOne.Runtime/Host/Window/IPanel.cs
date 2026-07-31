@@ -6,3 +6,6 @@ public interface IPanel
     bool IsOpen { get; set; }
     void Draw();
 }
+
+//generic panel, doesnt count for layout count
+public interface IFloatingPanel : IPanel;

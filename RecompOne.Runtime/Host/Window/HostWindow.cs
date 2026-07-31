@@ -181,7 +181,6 @@ public static class HostWindow
         PanelManager.Register(new OverlayEventsPanel());
         PanelManager.Register(new SettingsPopup());
         PanelManager.Register(new Modding.ModsPopup());
-        PanelManager.Register(new AboutPopup());
 
         SettingsRegistry.Register(new InputSettingsSection());
         SettingsRegistry.Register(new DisplaySettingsSection());
@@ -290,7 +289,7 @@ public static class HostWindow
         ImGui.Begin("##DockHost", hostFlags);
         ImGui.PopStyleVar(3);
         uint dockId = ImGui.GetID("##MainDock");
-        int openCount = PanelManager.Panels.Count(p => p.IsOpen && p is not AboutPopup);
+        int openCount = PanelManager.Panels.Count(p => p.IsOpen && p is not IFloatingPanel);
         var dockFlags = openCount <= 1 ? (ImGuiDockNodeFlags)4096 : ImGuiDockNodeFlags.None;
         ImGui.DockSpace(dockId, Vector2.Zero, dockFlags);
 
