@@ -282,7 +282,7 @@ public static class LibCd
         _filterFile = _filterChannel = 0;
         Array.Clear(_pos);
         Array.Clear(_lastResult);
-        Runtime.Spu?.SetCdMix(0x80, 0, 0, 0x80); //reset mix
+        Runtime.Spu?.SetCdMix(0x80, 0, 0x80, 0); //reset mix
         Dispatcher.ClearPending();
     }
 

@@ -356,14 +356,15 @@ public sealed class Spu
         }
     }
 
-    public void SetCdMix(byte ll, byte lr, byte rl, byte rr)
+    //CdlATV order: val0 = L to L, val1 = L to R, val2 = R to R, val3 = R to L
+    public void SetCdMix(byte ltol, byte ltor, byte rtor, byte rtol)
     {
         lock (_sync)
         {
-            _cdMixLL = ll;
-            _cdMixLR = lr;
-            _cdMixRL = rl;
-            _cdMixRR = rr;
+            _cdMixLL = ltol;
+            _cdMixLR = ltor;
+            _cdMixRL = rtol;
+            _cdMixRR = rtor;
         }
     }
 
@@ -380,8 +381,8 @@ public sealed class Spu
                 int mixL = l, mixR = r;
                 if (XaAudio.Next(out short xl, out short xr))
                 {
-                    int aL = (xl * _cdMixLL + xr * _cdMixRL) >> 7;
-                    int aR = (xl * _cdMixLR + xr * _cdMixRR) >> 7;
+                    int aL = Math.Clamp((xl * _cdMixLL + xr * _cdMixRL) >> 7, -32768, 32767);
+                    int aR = Math.Clamp((xl * _cdMixLR + xr * _cdMixRR) >> 7, -32768, 32767);
                     mixL += aL * (short)_cdVolL >> 15;
                     mixR += aR * (short)_cdVolR >> 15;
                 }
