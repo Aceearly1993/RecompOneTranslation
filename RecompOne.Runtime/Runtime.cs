@@ -40,6 +40,14 @@ public static class Runtime
     }
 
     public static void WaitForValidDisc() => HostWindow.WaitForValidDisc();
+
+    public static string Title
+    {
+        get => HostWindow.Title;
+        set => HostWindow.Title = value;
+    }
+
+    public static void SetTitle(string title) => HostWindow.SetTitle(title);
     
     public static void ShowNotice(string message) => Host.Window.NoticePopup.Show(message);
     public static void SetStartupNotice(string message, string title = "Notice", string ackKey = "StartupNoticeAck") => Host.Window.StartupNotice.Set(message, title, ackKey);

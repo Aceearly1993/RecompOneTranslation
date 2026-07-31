@@ -65,6 +65,14 @@ public static class HostWindow
         }
     }
 
+    public static string Title
+    {
+        get => _window?.Title ?? "";
+        set { if (_window != null) _window.Title = value ?? ""; }
+    }
+
+    public static void SetTitle(string title) => Title = title;
+
     public static void Present(Gpu? gpu)
     {
         _gpu = gpu;

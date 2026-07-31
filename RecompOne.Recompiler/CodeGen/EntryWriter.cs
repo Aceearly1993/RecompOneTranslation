@@ -18,9 +18,9 @@ public static class EntryWriter
         entry.AppendLine();
         entry.AppendLine("public static class Entry");
         entry.AppendLine("{");
-        entry.AppendLine("    public static void Run(IMemory m, string? cuePath = null)");
+        entry.AppendLine("    public static void Run(IMemory m, string? cuePath = null, string? title = null)");
         entry.AppendLine("    {");
-        entry.AppendLine($"        RecompOne.Runtime.Runtime.Initialize(\"{className}\");");
+        entry.AppendLine($"        RecompOne.Runtime.Runtime.Initialize(title ?? \"{className}\");");
         entry.AppendLine("        RecompOne.Runtime.Runtime.WaitForValidDisc();");
         entry.AppendLine("        using var fs = CueFs.Open(cuePath ?? RecompOne.Runtime.Runtime.CdPath);");
         entry.AppendLine("        var cd = new CdController(fs, m);");
