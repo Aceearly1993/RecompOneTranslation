@@ -204,6 +204,8 @@ public static class HostWindow
         io.ConfigWindowsMoveFromTitleBarOnly = true;
         unsafe { io.NativePtr->IniFilename = null; }
 
+        Icons.Load(13f);
+
         if (Config.ConfigManager.ApplyImGuiLayout())
             _layoutPending = false;
     }

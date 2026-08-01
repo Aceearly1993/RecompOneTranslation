@@ -15,10 +15,21 @@ public sealed class ModEntry
     public bool Loaded;
     public int HookCount;
     public byte[]? IconData;
+    public bool HasSettings { get; internal set; }
+    public string? LoadError { get; internal set; }
     internal bool IsZip;
     internal List<(string Path, string Text)> Sources = [];
     internal AssemblyLoadContext? Alc;
     internal IMod[] Instances = [];
+
+    public void DrawSettings()
+    {
+        foreach (var inst in Instances)
+        {
+            try { inst.DrawSettings(); }
+            catch (Exception ex) { Console.Error.WriteLine($"[Mods] {Info.Id}: DrawSettings threw: {ex.Message}"); }
+        }
+    }
 }
 
 public static class ModLoader
@@ -42,10 +53,13 @@ public static class ModLoader
         get { lock (_mods) return _mods.Where(m => m.Loaded).Select(m => m.Info).ToArray(); }
     }
 
+    public static string Root { get; private set; } = "";
+
     public static void LoadAll(string? root = null)
     {
         root ??= Path.GetFullPath("mods");
         Directory.CreateDirectory(root);
+        Root = root;
         _cacheDir = Path.Combine(root, ".cache");
 
         var discovered = Order(Discover(root));
@@ -320,7 +334,7 @@ public static class ModLoader
             {
                 Console.WriteLine($"[Mods] building {mod.Info.Id}...");
                 bytes = ModCompiler.Compile(mod.Info.Id, mod.Sources);
-                if (bytes == null) return;
+                if (bytes == null) { mod.LoadError = "compilation failed, check the console"; return; }
                 try
                 {
                     Directory.CreateDirectory(_cacheDir);
@@ -340,6 +354,8 @@ public static class ModLoader
 
             mod.HookCount = RegisterHooks(mod.Info, asm);
             mod.Instances = CreateInstances(mod.Info, asm);
+            mod.HasSettings = mod.Instances.Any(OverridesDrawSettings);
+            mod.LoadError = null;
             mod.Alc = alc;
             mod.Loaded = true;
             foreach (var inst in mod.Instances) inst.OnLoad();
@@ -347,8 +363,18 @@ public static class ModLoader
         }
         catch (Exception ex)
         {
+            mod.LoadError = ex.Message;
             Console.Error.WriteLine($"[Mods] failed to load {mod.Info.Id}: {ex.Message}");
         }
+    }
+
+    static bool OverridesDrawSettings(IMod inst)
+    {
+        var map = inst.GetType().GetInterfaceMap(typeof(IMod));
+        for (int i = 0; i < map.InterfaceMethods.Length; i++)
+            if (map.InterfaceMethods[i].Name == nameof(IMod.DrawSettings))
+                return map.TargetMethods[i].DeclaringType != typeof(IMod);
+        return false;
     }
 
     static void UnloadEntry(ModEntry mod)
@@ -363,6 +389,7 @@ public static class ModLoader
             HookManager.RemoveMod(mod.Info);
             mod.Instances = [];
             mod.HookCount = 0;
+            mod.HasSettings = false;
             mod.Loaded = false;
             mod.Alc?.Unload();
             mod.Alc = null;
