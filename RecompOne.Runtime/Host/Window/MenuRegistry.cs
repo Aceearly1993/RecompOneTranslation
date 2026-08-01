@@ -4,15 +4,24 @@ namespace RecompOne.Runtime.Host.Window;
 
 public static class MenuRegistry
 {
-    static readonly List<(string Label, Action Draw, string? Parent)> _menus = [];
+    public const int OrderSettings = 0;
+    public const int OrderMods = 100;
+    public const int OrderDebug = 400;
+    public const int OrderDefault = 500;
+
+    readonly record struct Entry(string Label, Action Draw, string? Parent, int Order);
+
+    static readonly List<Entry> _menus = [];
     static readonly List<Action> _windows = [];
 
-    public static void Register(string label, Action drawItems) => Register(label, drawItems, null);
+    public static void Register(string label, Action drawItems) => Register(label, drawItems, null, OrderDefault);
 
-    public static void Register(string label, Action drawItems, string? parent)
+    public static void Register(string label, Action drawItems, string? parent) => Register(label, drawItems, parent, OrderDefault);
+
+    public static void Register(string label, Action drawItems, string? parent, int order)
     {
         if (string.IsNullOrEmpty(label) || drawItems == null) return;
-        _menus.Add((label, drawItems, parent));
+        _menus.Add(new Entry(label, drawItems, parent, order));
     }
 
     public static void RegisterWindow(Action draw)
@@ -23,24 +32,46 @@ public static class MenuRegistry
 
     internal static void DrawMenus()
     {
-        foreach (var (label, draw, parent) in _menus)
+        var tops = new List<(string Label, int Order, int Index, bool IsParent)>();
+        var seen = new HashSet<string>();
+
+        for (int i = 0; i < _menus.Count; i++)
         {
-            if (parent != null) continue;
-            if (!ImGui.BeginMenu(label)) continue;
-            draw();
-            ImGui.EndMenu();
+            var m = _menus[i];
+            if (m.Parent == null)
+            {
+                tops.Add((m.Label, m.Order, i, false));
+                continue;
+            }
+
+            if (!seen.Add(m.Parent)) continue;
+
+            int order = m.Order;
+            for (int j = i + 1; j < _menus.Count; j++)
+                if (_menus[j].Parent == m.Parent && _menus[j].Order < order) order = _menus[j].Order;
+
+            tops.Add((m.Parent, order, i, true));
         }
 
-        var seen = new HashSet<string>();
-        foreach (var (_, _, parent) in _menus)
+        tops.Sort((a, b) => a.Order != b.Order ? a.Order.CompareTo(b.Order) : a.Index.CompareTo(b.Index));
+
+        foreach (var top in tops)
         {
-            if (parent == null || !seen.Add(parent)) continue;
-            if (!ImGui.BeginMenu(parent)) continue;
-            foreach (var (label, draw, p) in _menus)
+            if (!top.IsParent)
             {
-                if (p != parent) continue;
-                if (!ImGui.BeginMenu(label)) continue;
-                draw();
+                var m = _menus[top.Index];
+                if (!ImGui.BeginMenu(m.Label)) continue;
+                m.Draw();
+                ImGui.EndMenu();
+                continue;
+            }
+
+            if (!ImGui.BeginMenu(top.Label)) continue;
+            foreach (var child in _menus)
+            {
+                if (child.Parent != top.Label) continue;
+                if (!ImGui.BeginMenu(child.Label)) continue;
+                child.Draw();
                 ImGui.EndMenu();
             }
             ImGui.EndMenu();

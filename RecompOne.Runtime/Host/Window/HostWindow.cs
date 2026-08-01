@@ -181,6 +181,7 @@ public static class HostWindow
         PanelManager.Register(new OverlayEventsPanel());
         PanelManager.Register(new SettingsPopup());
         PanelManager.Register(new Modding.ModsPopup());
+        MainMenuBar.RegisterBuiltins();
 
         SettingsRegistry.Register(new InputSettingsSection());
         SettingsRegistry.Register(new DisplaySettingsSection());

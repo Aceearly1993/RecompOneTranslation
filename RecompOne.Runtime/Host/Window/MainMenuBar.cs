@@ -5,59 +5,55 @@ namespace RecompOne.Runtime.Host.Window;
 
 internal static class MainMenuBar
 {
+    static bool _registered;
+
+    public static void RegisterBuiltins()
+    {
+        if (_registered) return;
+        _registered = true;
+        MenuRegistry.Register("Settings", ConfigMenu, null, MenuRegistry.OrderSettings);
+        MenuRegistry.Register("Mods", ModsMenu, null, MenuRegistry.OrderMods);
+        MenuRegistry.Register("Debug", DebugMenu, null, MenuRegistry.OrderDebug);
+    }
+
     public static void Draw()
     {
-
-        ConfigMenu();
+        if (!ImGui.BeginMainMenuBar()) return;
         MenuRegistry.DrawMenus();
-        ModsMenu();
-        DebugMenu();
         ImGui.EndMainMenuBar();
     }
 
     static void ConfigMenu()
     {
-        if (!ImGui.BeginMainMenuBar()) return;
+        if (ImGui.MenuItem("Settings..."))
+            if (PanelManager.Get<SettingsPopup>() is { } popup) popup.IsOpen = true;
 
-        if (ImGui.BeginMenu("Settings"))
+        ImGui.Separator();
+
+        bool showBar = !ConfigManager.View.HideTopBar;
+        if (ImGui.MenuItem("Show Menu Bar", "F1", showBar))
         {
-            if (ImGui.MenuItem("Settings..."))
-                if (PanelManager.Get<SettingsPopup>() is { } popup) popup.IsOpen = true;
+            ConfigManager.View.HideTopBar = showBar;
+            ConfigManager.SaveView(PanelManager.Panels);
+        }
 
-            ImGui.Separator();
-
-            bool showBar = !ConfigManager.View.HideTopBar;
-            if (ImGui.MenuItem("Show Menu Bar", "F1", showBar))
-            {
-                ConfigManager.View.HideTopBar = showBar;
-                ConfigManager.SaveView(PanelManager.Panels);
-            }
-
-            bool fs = ConfigManager.View.Fullscreen;
-            if (ImGui.MenuItem("Fullscreen", "F11", fs))
-            {
-                ConfigManager.View.Fullscreen = !fs;
-                HostWindow.SetFullscreen(!fs);
-                ConfigManager.SaveView(PanelManager.Panels);
-            }
-
-            ImGui.EndMenu();
+        bool fs = ConfigManager.View.Fullscreen;
+        if (ImGui.MenuItem("Fullscreen", "F11", fs))
+        {
+            ConfigManager.View.Fullscreen = !fs;
+            HostWindow.SetFullscreen(!fs);
+            ConfigManager.SaveView(PanelManager.Panels);
         }
     }
+
     static void ModsMenu()
     {
-        if (!ImGui.BeginMenu("Mods")) return;
-
         if (ImGui.MenuItem("Mods..."))
             if (PanelManager.Get<Modding.ModsPopup>() is { } popup) popup.IsOpen = true;
-
-        ImGui.EndMenu();
     }
 
     static void DebugMenu()
     {
-        if (!ImGui.BeginMenu("Debug")) return;
-
         if (ImGui.BeginMenu("GPU"))
         {
             Toggle<OutputPanel>("Output");
@@ -95,8 +91,6 @@ internal static class MainMenuBar
         ImGui.Separator();
 
         if (ImGui.MenuItem("Reset View")) ConfigManager.ResetView(PanelManager.Panels);
-        
-        ImGui.EndMenu();
     }
 
     static void Toggle<T>(string label) where T : class, IPanel
