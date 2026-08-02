@@ -501,7 +501,7 @@ public sealed class GlBackend : IGpuBackend
 
         int w1x = src != null ? w + src.Margin * 2 : w;
         int h1x = h;
-        float aspect = src is { Margin: > 0 } ? GpuHle.WideAspect : GpuHle.OutputAspect;
+        float aspect = src is { Margin: > 0 } ? GpuHle.WideAspect : src != null ? GpuHle.SourceAspect : GpuHle.OutputAspect;
 
 
         int presentScale = GpuHle.NativeResolution ? 1 : GlVram.Scale;

@@ -21,4 +21,6 @@ public static class Display
     }
 
     public static int WideMargin(int width) => GpuHle.WideMargin(width);
+
+    public static float SourceAspect { get => GpuHle.SourceAspect; set => GpuHle.SourceAspect = value; }
 }

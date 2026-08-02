@@ -132,7 +132,7 @@ public static class ModLoader
         lock (_mods) return _mods.FirstOrDefault(m => string.Equals(m.Info.Id, id, StringComparison.OrdinalIgnoreCase));
     }
 
-    static bool IsEnabled(string id) => RecompOne.Runtime.Runtime.View.GetBool($"mods.{id}.enabled", true);
+    static bool IsEnabled(string id) => RecompOne.Runtime.Runtime.View.GetBool($"mods.{id}.enabled", false);
 
     static void SaveEnabled(string id, bool enabled)
     {
@@ -140,31 +140,14 @@ public static class ModLoader
         RecompOne.Runtime.Runtime.SaveView();
     }
 
+    const int MaxDepth = 4;
+
     static List<ModEntry> Discover(string root)
     {
         var list = new List<ModEntry>();
+        DiscoverFolders(root, list, 0);
 
-        foreach (var dir in Directory.EnumerateDirectories(root))
-        {
-            if (Path.GetFileName(dir).StartsWith('.')) continue;
-            var jsonPath = Path.Combine(dir, "mod.json");
-            if (!File.Exists(jsonPath))
-            {
-                Console.Error.WriteLine($"[Mods] mod.json not found for {Path.GetFileName(dir)}, skipping");
-                continue;
-            }
-            var info = ParseInfo(File.ReadAllText(jsonPath), dir);
-            if (info == null) continue;
-            list.Add(new ModEntry
-            {
-                Info = info,
-                IsZip = false,
-                Sources = ReadSources(dir, false),
-                IconData = LoadIcon(dir, false),
-            });
-        }
-
-        foreach (var zipPath in Directory.EnumerateFiles(root, "*.zip"))
+        foreach (var zipPath in Directory.EnumerateFiles(root, "*.zip", SearchOption.AllDirectories))
         {
             try
             {
@@ -197,6 +180,35 @@ public static class ModLoader
         }
 
         return list;
+    }
+    
+    //recursive folders, mod cna have its dependencies inside it if needed
+    static void DiscoverFolders(string dir, List<ModEntry> list, int depth)
+    {
+        if (depth > MaxDepth) return;
+
+        foreach (var sub in Directory.EnumerateDirectories(dir))
+        {
+            var name = Path.GetFileName(sub);
+            if (name.StartsWith('.')) continue;
+
+            var jsonPath = Path.Combine(sub, "mod.json");
+            if (!File.Exists(jsonPath))
+            {
+                DiscoverFolders(sub, list, depth + 1);
+                continue;
+            }
+
+            var info = ParseInfo(File.ReadAllText(jsonPath), sub);
+            if (info == null) continue;
+            list.Add(new ModEntry
+            {
+                Info = info,
+                IsZip = false,
+                Sources = ReadSources(sub, false),
+                IconData = LoadIcon(sub, false),
+            });
+        }
     }
 
     static List<(string, string)> ReadSources(string sourcePath, bool isZip)

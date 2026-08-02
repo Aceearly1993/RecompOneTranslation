@@ -7,6 +7,8 @@ public static class GpuHle
 
     public static float WideAspect { get; set; }
     public static float OutputAspect { get; set; } = 4f / 3f;
+
+    public static float SourceAspect { get; set; } = 4f / 3f;
     public static bool NativeResolution { get; set; }
     public static float TargetAspect { get; set; } = 4f / 3f;
     public const float BaseAspect = 4f / 3f;
@@ -38,7 +40,8 @@ public static class GpuHle
     public static int WideMargin(int w)
     {
         if (WideAspect <= 0f) return 0;
-        int wide = (int)MathF.Ceiling(w * WideAspect / BaseAspect);
+        float source = SourceAspect > 0f ? SourceAspect : BaseAspect;
+        int wide = (int)MathF.Ceiling(w * WideAspect / source);
         return Math.Max(0, (wide - w + 1) / 2);
     }
 }
