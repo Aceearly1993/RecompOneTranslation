@@ -72,7 +72,7 @@ internal sealed class DiscPickerPopup : IPanel
         {
             ImGui.Spacing();
             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.3f, 0.3f, 1f));
-            ImGui.TextUnformatted(_error);
+            ImGui.TextWrapped(_error);
             ImGui.PopStyleColor();
         }
 
@@ -135,6 +135,13 @@ internal sealed class DiscPickerPopup : IPanel
         if (!File.Exists(path))
         {
             _error = "File was not found please check the path and try again";
+            return;
+        }
+
+        
+        if (Runtime.ValidateDisc(path) is { } problem)
+        {
+            _error = problem;
             return;
         }
 

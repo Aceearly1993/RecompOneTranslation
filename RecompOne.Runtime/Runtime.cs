@@ -18,12 +18,28 @@ public static class Runtime
     public static RunMode Mode { get; private set; } = RunMode.Retail;
     public static void SetMode(RunMode mode) => Mode = mode; //devkit vs retail, devkits reads from sim and has more ram
     public static string CdPath => Config.ConfigManager.Game.CdPath;
+
+    public static Func<string, string?>? DiscValidator;
+    public static string? ValidateDisc(string path)
+    {
+        try { return DiscValidator?.Invoke(path); }
+        catch (Exception e) { return e.Message; }
+    }
     
     public static Config.ViewConfig View => Config.ConfigManager.View;
     public static void SaveView() => Config.ConfigManager.SaveView(Host.Window.PanelManager.Panels);
     
     public static Hardware.MemoryCard CardA = new("carda.sav") { Enabled = true };
     public static Hardware.MemoryCard CardB = new("cardb.sav") { Enabled = true };
+
+    static void LoadMemoryCards()
+    {
+        var g = Config.ConfigManager.Game;
+        CardA = new(Fallback(g.CardAPath, "carda.sav")) { Enabled = g.CardAEnabled };
+        CardB = new(Fallback(g.CardBPath, "cardb.sav")) { Enabled = g.CardBEnabled };
+
+        static string Fallback(string path, string def) => string.IsNullOrWhiteSpace(path) ? def : path;
+    }
     public static readonly Memory.RamLogger RamLog = new();
     public static readonly Dispatch.OverlayEventLog OverlayLog = new();
 
@@ -31,6 +47,7 @@ public static class Runtime
     {
         Diagnostics.ConsoleMirror.Install();
         HostWindow.Initialize(title);
+        LoadMemoryCards();
         Audio.Initialize();
         Audio.SetMasterVolume(Config.ConfigManager.Game.Muted ? 0f : Config.ConfigManager.Game.MasterVolume);
         if (Event.HasAnyListeners<RuntimeReadyEvent>())

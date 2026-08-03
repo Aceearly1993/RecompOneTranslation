@@ -60,6 +60,10 @@ public class GamepadBindings
 public class GameConfig
 {
     public string CdPath { get; set; } = "";
+    public string CardAPath { get; set; } = "carda.sav";
+    public string CardBPath { get; set; } = "cardb.sav";
+    public bool CardAEnabled { get; set; } = true;
+    public bool CardBEnabled { get; set; } = true;
     public float MasterVolume { get; set; } = 1.0f;
     public float SpuVolume { get; set; } = 1.0f;
     public float XaVolume { get; set; } = 1.0f;

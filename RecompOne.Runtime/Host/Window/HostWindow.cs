@@ -167,7 +167,8 @@ public static class HostWindow
         while (true)
         {
             var path = ConfigManager.Game.CdPath;
-            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path)) return;
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path) && Runtime.ValidateDisc(path) == null)
+                return;
 
             try { _window.DoEvents(); } catch { }
             if (_window.IsClosing) { Runtime.Shutdown(); Environment.Exit(0); }
@@ -215,6 +216,7 @@ public static class HostWindow
 
         SettingsRegistry.Register(new InputSettingsSection());
         SettingsRegistry.Register(new DisplaySettingsSection());
+        SettingsRegistry.Register(new PathsSettingsSection());
         SettingsRegistry.Register(new AudioSettingsSection());
 
         _discPicker = new DiscPickerPopup();
@@ -223,7 +225,7 @@ public static class HostWindow
         ConfigManager.ApplyViewToPanels(PanelManager.Panels);
 
         var cdPath = ConfigManager.Game.CdPath;
-        if (string.IsNullOrWhiteSpace(cdPath) || !File.Exists(cdPath))
+        if (string.IsNullOrWhiteSpace(cdPath) || !File.Exists(cdPath) || Runtime.ValidateDisc(cdPath) != null)
             _discPicker.Show();
     }
 
