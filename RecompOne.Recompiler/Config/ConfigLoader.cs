@@ -24,11 +24,62 @@ public sealed class RecompOneConfig
 
 public sealed class PatchEntry
 {
-    [JsonPropertyName("overlay")] public string Overlay { get; set; } = "";
+    [JsonPropertyName("overlay")]
+    [JsonConverter(typeof(StringOrArrayConverter))]
+    public string[] Overlay { get; set; } = []; //list or single one, * for wildcard so can have the same patch being applied in all overlays containing this function
+
     [JsonPropertyName("function")] public string Function { get; set; } = "";
     [JsonPropertyName("address")] public string Address { get; set; } = "";
     [JsonPropertyName("target")] public string Target { get; set; } = "";
     [JsonPropertyName("mode")] public string Mode { get; set; } = "replace";
+
+    public bool MatchesOverlay(string overlayName)
+    {
+        if (Overlay.Length == 0) return true;
+        foreach (var o in Overlay)
+        {
+            if (o == "*") return true;
+            if (string.Equals(o, overlayName, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    public string OverlayLabel => Overlay.Length == 0 ? "" : string.Join(",", Overlay);
+}
+
+public sealed class StringOrArrayConverter : JsonConverter<string[]>
+{
+    public override string[] Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var s = reader.GetString();
+            return string.IsNullOrEmpty(s) ? [] : [s];
+        }
+
+        if (reader.TokenType == JsonTokenType.StartArray)
+        {
+            var list = new List<string>();
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+                if (reader.TokenType == JsonTokenType.String)
+                {
+                    var s = reader.GetString();
+                    if (!string.IsNullOrEmpty(s)) list.Add(s);
+                }
+            return list.ToArray();
+        }
+
+        return [];
+    }
+
+    
+    public override void Write(Utf8JsonWriter writer, string[] value, JsonSerializerOptions options)
+    {
+        if (value.Length == 1) { writer.WriteStringValue(value[0]); return; }
+        writer.WriteStartArray();
+        foreach (var v in value) writer.WriteStringValue(v);
+        writer.WriteEndArray();
+    }
 }
 
 public sealed class GameConfig

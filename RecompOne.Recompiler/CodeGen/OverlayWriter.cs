@@ -410,7 +410,7 @@ public static class OverlayWriter
             int matched = 0;
             foreach (var func in funcs)
             {
-                if (!string.IsNullOrEmpty(patch.Overlay) && !string.Equals(func.OverlayName, patch.Overlay, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!patch.MatchesOverlay(func.OverlayName)) continue;
                 bool hit = addr.HasValue ? func.Start == addr.Value : string.Equals(func.Name, patch.Function, StringComparison.Ordinal);
                 if (!hit) continue;
                 matched++;
@@ -437,7 +437,7 @@ public static class OverlayWriter
                 applied++;
             }
             if (matched == 0)
-                Console.WriteLine($"[Recompiler] WARNING: patch '{patch.Target}' matched nothing (overlay='{patch.Overlay}' function='{patch.Function}' address='{patch.Address}')");
+                Console.WriteLine($"[Recompiler] WARNING: patch '{patch.Target}' matched nothing (overlay='{patch.OverlayLabel}' function='{patch.Function}' address='{patch.Address}')");
         }
         Console.WriteLine($"[Recompiler] applied {applied} patches");
     }
