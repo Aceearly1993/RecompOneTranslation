@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Reflection.Metadata;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -29,13 +31,26 @@ public static class ModCompiler
         return ms.ToArray();
     }
 
-    static List<MetadataReference> References()
+    static unsafe List<MetadataReference> References()
     {
         if (_references != null) return _references;
-        _references = AppDomain.CurrentDomain.GetAssemblies()
-            .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location))
-            .Select(a => (MetadataReference)MetadataReference.CreateFromFile(a.Location))
-            .ToList();
+
+        var refs = new List<MetadataReference>();
+        foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (a.IsDynamic) continue;
+
+            if (!string.IsNullOrEmpty(a.Location))
+            {
+                refs.Add(MetadataReference.CreateFromFile(a.Location));
+                continue;
+            }
+
+           //use the budnled dll instead of trying to find ones that odnt exist, should fix mod on single file publish
+            if (a.TryGetRawMetadata(out byte* blob, out int length)) refs.Add(AssemblyMetadata.Create(ModuleMetadata.CreateFromMetadata((IntPtr)blob, length)).GetReference());
+        }
+
+        _references = refs;
         return _references;
     }
 }
