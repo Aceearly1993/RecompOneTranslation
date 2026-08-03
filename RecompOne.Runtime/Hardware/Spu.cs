@@ -146,6 +146,21 @@ public sealed class Spu
     ushort _cdVolL, _cdVolR;
     ushort _extVolL, _extVolR;
     int _cdMixLL = 0x80, _cdMixLR, _cdMixRL, _cdMixRR = 0x80;
+
+  //vol cont
+    int _voiceGain = 0x8000, _xaGain = 0x8000;
+
+    public float VoiceGain
+    {
+        get => _voiceGain / 32768f;
+        set => _voiceGain = (int)(Math.Clamp(value, 0f, 1f) * 32768f);
+    }
+
+    public float XaGain
+    {
+        get => _xaGain / 32768f;
+        set => _xaGain = (int)(Math.Clamp(value, 0f, 1f) * 32768f);
+    }
     ushort _reverbStartAddr;
 
     int _noiseLevel = 1;
@@ -378,13 +393,13 @@ public sealed class Spu
                 SweepTick(_mainVolR, ref _mainCurR, ref _mainCycR);
 
                 var (l, r) = Tick();
-                int mixL = l, mixR = r;
+                int mixL = l * _voiceGain >> 15, mixR = r * _voiceGain >> 15;
                 if (XaAudio.Next(out short xl, out short xr))
                 {
                     int aL = Math.Clamp((xl * _cdMixLL + xr * _cdMixRL) >> 7, -32768, 32767);
                     int aR = Math.Clamp((xl * _cdMixLR + xr * _cdMixRR) >> 7, -32768, 32767);
-                    mixL += aL * (short)_cdVolL >> 15;
-                    mixR += aR * (short)_cdVolR >> 15;
+                    mixL += ((aL * (short)_cdVolL >> 15) * _xaGain) >> 15;
+                    mixR += ((aR * (short)_cdVolR >> 15) * _xaGain) >> 15;
                 }
                 mixL = Math.Clamp(mixL, -32768, 32767) * _mainCurL >> 15;
                 mixR = Math.Clamp(mixR, -32768, 32767) * _mainCurR >> 15;

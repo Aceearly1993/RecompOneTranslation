@@ -61,6 +61,8 @@ public class GameConfig
 {
     public string CdPath { get; set; } = "";
     public float MasterVolume { get; set; } = 1.0f;
+    public float SpuVolume { get; set; } = 1.0f;
+    public float XaVolume { get; set; } = 1.0f;
     public bool Muted { get; set; } = false;
     public KeyBindings Keys { get; set; } = new();
     public KeyBindings Keys2 { get; set; } = KeyBindings.Empty();

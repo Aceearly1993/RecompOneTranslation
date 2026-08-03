@@ -66,7 +66,10 @@ internal static unsafe class Audio
 
     public static void Attach(Spu? spu)
     {
-        if (spu != null) _spu = spu;
+        if (spu == null) return;
+        _spu = spu;
+        spu.VoiceGain = Config.ConfigManager.Game.SpuVolume;
+        spu.XaGain = Config.ConfigManager.Game.XaVolume;
     }
 
     public static void SetMasterVolume(float volume)

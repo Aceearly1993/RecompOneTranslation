@@ -6,8 +6,8 @@ namespace RecompOne.Runtime.Host.Window;
 internal sealed class OutputPanel : IPanel
 {
     public string Name => "Output";
-    public bool IsOpen { get; set; } = true;
-
+    
+    public bool IsOpen { get => true; set { } }
     static uint _texId;
     static int _texW, _texH;
     static float _aspect = 4f / 3f;
@@ -19,10 +19,8 @@ internal sealed class OutputPanel : IPanel
     {
         ImGui.SetNextWindowSize(new Vector2(640, 480), ImGuiCond.FirstUseEver);
 
-        bool open = IsOpen;
-        if (!ImGui.Begin(Name, ref open))
+        if (!ImGui.Begin(Name, ImGuiWindowFlags.NoCollapse))
         {
-            IsOpen = open;
             ImGui.End();
             return;
         }
@@ -36,7 +34,6 @@ internal sealed class OutputPanel : IPanel
             ImGui.Image((nint)_texId, imageSize);
         }
 
-        IsOpen = open;
         ImGui.End();
     }
 

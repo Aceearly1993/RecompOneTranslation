@@ -49,4 +49,16 @@ public class ViewConfig
         get => GetBool("NativeResolution");
         set => SetBool("NativeResolution", value);
     }
+
+    public bool BorderlessFullscreen
+    {
+        get => GetBool("BorderlessFullscreen", true);
+        set => SetBool("BorderlessFullscreen", value);
+    }
+
+    public float UiScale
+    {
+        get => Math.Clamp(GetFloat("UiScale", 1f), 0.5f, 3f);
+        set => SetFloat("UiScale", Math.Clamp(value, 0.5f, 3f));
+    }
 }

@@ -112,10 +112,40 @@ public static class HostWindow
         InputManager.Shutdown();
     }
 
+    static Vector2D<int>? _restoreSize, _restorePos;
+
     public static void SetFullscreen(bool on)
     {
         if (_window == null) return;
-        _window.WindowState = on ? WindowState.Fullscreen : WindowState.Normal;
+
+        if (!on)
+        {
+            _window.WindowState = WindowState.Normal;
+            _window.WindowBorder = WindowBorder.Resizable;
+            if (_restoreSize is { } size) _window.Size = size;
+            if (_restorePos is { } pos) _window.Position = pos;
+            _restoreSize = null;
+            _restorePos = null;
+            return;
+        }
+
+        if (!ConfigManager.View.BorderlessFullscreen)
+        {
+            _window.WindowState = WindowState.Fullscreen;
+            return;
+        }
+
+        if (_restoreSize == null)
+        {
+            _restoreSize = _window.Size;
+            _restorePos = _window.Position;
+        }
+
+        var bounds = (_window.Monitor ?? Silk.NET.Windowing.Monitor.GetMainMonitor(_window)).Bounds;
+        _window.WindowState = WindowState.Normal;
+        _window.WindowBorder = WindowBorder.Hidden;
+        _window.Position = bounds.Origin;
+        _window.Size = bounds.Size;
     }
 
     public static bool IsKeyDown(Key k) => InputManager.IsKeyDown(k);
@@ -202,6 +232,7 @@ public static class HostWindow
         var io = ImGui.GetIO();
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
         io.ConfigWindowsMoveFromTitleBarOnly = true;
+        io.FontGlobalScale = Config.ConfigManager.View.UiScale;
         unsafe { io.NativePtr->IniFilename = null; }
 
         Icons.Load(13f);
