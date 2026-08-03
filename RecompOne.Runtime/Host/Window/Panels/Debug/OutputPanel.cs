@@ -14,14 +14,17 @@ internal sealed class OutputPanel : IPanel
 
     public static void SetTexture(uint id, int w, int h, float aspect = 0f)
         => (_texId, _texW, _texH, _aspect) = (id, w, h, aspect > 0f ? aspect : 4f / 3f);
-
+    
+    //idea: in the future make this be able to draw images so you can have ornamented backgrounds
     public void Draw()
     {
         ImGui.SetNextWindowSize(new Vector2(640, 480), ImGuiCond.FirstUseEver);
+        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0f, 0f, 0f, 1f));
 
         if (!ImGui.Begin(Name, ImGuiWindowFlags.NoCollapse))
         {
             ImGui.End();
+            ImGui.PopStyleColor();
             return;
         }
 
@@ -35,6 +38,7 @@ internal sealed class OutputPanel : IPanel
         }
 
         ImGui.End();
+        ImGui.PopStyleColor();
     }
 
     static Vector2 FitAspect(Vector2 src, Vector2 dst)
