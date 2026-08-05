@@ -50,10 +50,16 @@ public class ViewConfig
         set => SetBool("NativeResolution", value);
     }
 
-    public bool BorderlessFullscreen
+    public bool VSync
     {
-        get => GetBool("BorderlessFullscreen", true);
-        set => SetBool("BorderlessFullscreen", value);
+        get => GetBool("VSync");
+        set => SetBool("VSync", value);
+    }
+
+    public string GpuBackend
+    {
+        get => GetString("GpuBackend", "auto");
+        set => SetString("GpuBackend", value);
     }
 
     public float UiScale

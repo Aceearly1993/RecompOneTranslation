@@ -3,7 +3,7 @@ using Silk.NET.OpenGL;
 
 namespace RecompOne.Runtime.Hle;
 
-public sealed class GlBackend : IGpuBackend
+public sealed class GlCore : IGpuBackend
 {
     [StructLayout(LayoutKind.Sequential)]
     struct GlVertex { public float X, Y; public uint Color; public int Clut, Texpage; public float U, V; }
@@ -11,7 +11,9 @@ public sealed class GlBackend : IGpuBackend
     const int MaxVerts = 0x40000;
 
     readonly GL _gl;
-    readonly GlVram _vram;
+    readonly IGlVram _vram;
+    readonly List<uint> _images = [];
+    uint _imgProg, _imgVao, _imgVbo;
     readonly GlDisplayRt?[] _rts = new GlDisplayRt?[2];
     long _rtStamp;
     long _frame;
@@ -36,7 +38,7 @@ public sealed class GlBackend : IGpuBackend
 
     public bool Ready { get; private set; }
 
-    public GlBackend(GL gl) { _gl = gl; _vram = new GlVram(gl); }
+    public GlCore(GL gl, IGlVram vram) { _gl = gl; _vram = vram; }
 
     public unsafe void InitGl()
     {
@@ -374,7 +376,7 @@ public sealed class GlBackend : IGpuBackend
         _vram.ReadRect(x, y, w, h, px);
     }
 
-    public unsafe void Flush()
+    public void Flush()
     {
         if (_count == 0) return;
 
@@ -391,7 +393,17 @@ public sealed class GlBackend : IGpuBackend
             _gl.Viewport(0, 0, (uint)rt.TexW, (uint)rt.TexH);
             destTex = rt.Tex;
         }
-        _vram.Barrier();
+        int destW = rt == null ? GlVram.Width : rt.TexW;
+        int destH = rt == null ? GlVram.Height : rt.TexH;
+
+        GpuGlAccess.Gl = _gl;
+        GpuGlAccess.TargetFbo = rt == null ? _vram.Fbo : rt.Fbo;
+        GpuGlAccess.TargetWidth = destW;
+        GpuGlAccess.TargetHeight = destH;
+        GpuGlAccess.TargetOriginX = rt == null ? 0 : rt.X;
+        GpuGlAccess.TargetOriginY = rt == null ? 0 : rt.Y;
+        GpuGlAccess.TargetMargin = rt == null ? 0 : rt.Margin;
+        destTex = _vram.BeginDestRead(destTex, destW, destH, 0, 0, destW, destH);
 
         _gl.Disable(EnableCap.DepthTest);
         _gl.Disable(EnableCap.CullFace);
@@ -450,7 +462,7 @@ public sealed class GlBackend : IGpuBackend
                 SetBlend(0f, 1f);
                 _gl.DrawArrays(PrimitiveType.Triangles, 0, (uint)_count);
 
-                _vram.Barrier();
+                _vram.BeginDestRead(destTex, destW, destH, 0, 0, destW, destH);
                 _gl.BlendEquationSeparate(BlendEquationModeEXT.FuncReverseSubtract, BlendEquationModeEXT.FuncAdd);
                 SetBlend(1f, 1f);
                 _gl.Uniform4(_uBlendOpaque, 0f, 0f, 0f, 1f);

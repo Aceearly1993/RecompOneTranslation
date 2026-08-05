@@ -80,6 +80,12 @@ public static class OverlayWriter
                 Console.WriteLine("[Recompiler] processing main executable");
                 mainInstrs = MipsDisasm.Disassemble(mainExe.Code, mainExe.Destination);
                 funcs = FunctionDetector.DetectFromScan(mainInstrs, mainExe.InitialPC, "main");
+                elfInfo = new FunctionInfo
+                {
+                    TextBase = mainExe.Destination,
+                    LoadAddress = mainExe.Destination,
+                    TextData = mainExe.Code,
+                };
             }
 
             if (funcs.All(f => f.Start != mainExe.InitialPC))
@@ -101,7 +107,7 @@ public static class OverlayWriter
             if (config.LinearSweep)
                 SweepFunctions(funcs, mainInstrs, elfInfo?.NoTypeSymbols ?? [], "main");
 
-            if (elfInfo != null) AnalyzeJumpTables(funcs, elfInfo, "main");
+            AnalyzeJumpTables(funcs, elfInfo!, "main");
 
             ApplyStubsAndIgnored(funcs, config.Stubs, config.Ignored);
             overlayResults.Add(new OverlayResult("main", funcs, -1, 0, 0, mainInstrs));
@@ -109,33 +115,51 @@ public static class OverlayWriter
 
         foreach (var overlayConfig in config.Overlays)
         {
+            var analysis = AnalyzeOverlay(config, overlayConfig, fs);
+            if (analysis == null) continue;
+            overlayResults.Add(new OverlayResult(overlayConfig.Name, analysis.Functions, analysis.Lba,
+                analysis.Base, (uint)analysis.DiscBin.Length, analysis.Instructions));
+        }
+
+        var allFuncs = overlayResults.SelectMany(o => o.Functions).ToList();
+        ResolveCollisions(allFuncs);
+        ApplyPatches(allFuncs, config.Patches);
+        SdkPatches.Apply(allFuncs);
+        WriteAll(config, outDir, className, mainExe, sysCfg, overlayResults, allFuncs);
+    }
+
+    public sealed record OverlayAnalysis(List<MipsFunction> Functions, MipsInstruction[] Instructions, FunctionInfo ElfInfo, byte[] DiscBin, int Lba, uint Base);
+
+    public static OverlayAnalysis? AnalyzeOverlay(RecompOneConfig config, OverlayConfig overlayConfig, CueFs fs)
+    {
+        {
             bool noSymbols = overlayConfig.Elf == null && overlayConfig.Map == null && overlayConfig.FuncMap == null;
             if (noSymbols && !((overlayConfig.LinearSweep ?? config.LinearSweep) && overlayConfig.Base != null))
             {
                 Console.WriteLine($"[Recompiler] WARNING: Overlay '{overlayConfig.Name}' has no source defined, this will be skiped");
-                continue;
+                return null;
             }
             if (overlayConfig.Elf != null && !File.Exists(overlayConfig.Elf))
             {
                 Console.WriteLine($"[Recompiler] WARNING: ELF file not found for overlay '{overlayConfig.Name}' ({overlayConfig.Elf}), this will be skiped.");
-                continue;
+                return null;
             }
             if (overlayConfig.Map != null && !File.Exists(overlayConfig.Map))
             {
                 Console.WriteLine($"[Recompiler] WARNING: map file not found for overlay '{overlayConfig.Name}' ({overlayConfig.Map}), this will be skiped.");
-                continue;
+                return null;
             }
             if (overlayConfig.FuncMap != null)
             {
                 if (!File.Exists(overlayConfig.FuncMap))
                 {
                     Console.WriteLine($"[Recompiler] WARNING: function map not found for overlay '{overlayConfig.Name}' ({overlayConfig.FuncMap}), this will be skiped.");
-                    continue;
+                    return null;
                 }
                 if (overlayConfig.Elf == null && overlayConfig.Map == null && overlayConfig.Base == null)
                 {
                     Console.WriteLine($"[Recompiler] WARNING: overlay '{overlayConfig.Name}' uses 'funcMap' alone but has no 'base' address defined, this will be skiped.");
-                    continue;
+                    return null;
                 }
             }
 
@@ -148,7 +172,7 @@ public static class OverlayWriter
             if (discBin == null)
             {
                 Console.WriteLine($"[Recompiler] WARNING: could not resolve disc data for overlay '{overlayConfig.Name}', skipping");
-                continue;
+                return null;
             }
 
             var rawElf = overlayConfig.Elf != null ? ElfReader.Read(overlayConfig.Elf) : null;
@@ -195,14 +219,12 @@ public static class OverlayWriter
             ApplyStubsAndIgnored(funcs, overlayConfig.Stubs.Concat(config.Stubs), overlayConfig.Ignored.Concat(config.Ignored));
             
             uint ovlBase = overlayConfig.Base != null ? Convert.ToUInt32(overlayConfig.Base, 16) + (uint)overlayConfig.Rebase : 0;
-            overlayResults.Add(new OverlayResult(overlayConfig.Name, funcs, overlayLba, ovlBase, (uint)discBin.Length, instrs));
+            return new OverlayAnalysis(funcs, instrs, elfInfo, discBin, overlayLba, ovlBase);
         }
+    }
 
-        var allFuncs = overlayResults.SelectMany(o => o.Functions).ToList();
-        ResolveCollisions(allFuncs);
-        ApplyPatches(allFuncs, config.Patches);
-        SdkPatches.Apply(allFuncs);
-
+    static void WriteAll(RecompOneConfig config, string outDir, string className, PsxExe mainExe, SystemCfg sysCfg, List<OverlayResult> overlayResults, List<MipsFunction> allFuncs)
+    {
         var uniqueAddrs = allFuncs.GroupBy(f => f.Start).Where(g => g.Count() == 1).Select(g => g.Key).ToHashSet();
         var knownFuncs = allFuncs.Where(f => uniqueAddrs.Contains(f.Start)).ToDictionary(f => f.Start, f => $"{className}.{f.EmittedName}");
 
@@ -236,11 +258,23 @@ public static class OverlayWriter
     {
         if (entries.Length == 0) return;
 
-        var have = new HashSet<uint>(funcs.Select(f => f.Start));
-        var missing = entries
-            .Select(f => (Addr: Convert.ToUInt32(f.Address, 16), f.Name))
-            .Where(e => have.Add(e.Addr))
-            .ToList();
+        var byStart = funcs.GroupBy(f => f.Start).ToDictionary(g => g.Key, g => g.First());
+        var missing = new List<(uint Addr, string? Name)>();
+        int renamed = 0;
+        foreach (var entry in entries)
+        {
+            uint addr = Convert.ToUInt32(entry.Address, 16);
+            if (!byStart.TryGetValue(addr, out var existing))
+            {
+                missing.Add((addr, entry.Name));
+                continue;
+            }
+            if (string.IsNullOrEmpty(entry.Name) || existing.Name == entry.Name) continue;
+            existing.Name = entry.Name;
+            renamed++;
+        }
+        if (renamed > 0)
+            Console.WriteLine($"[Recompiler] renamed {renamed} detected function(s) from config in {overlayName}");
         if (missing.Count == 0) return;
 
         var extras = FunctionDetector.DetectFromAddresses(instrs, missing.Select(e => (e.Addr, e.Name)), funcs, overlayName);
@@ -400,6 +434,14 @@ public static class OverlayWriter
             Console.WriteLine($"[Recompiler] {name}: found jump tables in {funcsWithTables} function(s), {totalEntries} entries in total");
     }
     
+    static bool PatchNameMatches(MipsFunction func, string? patchFunction)
+    {
+        if (string.IsNullOrEmpty(patchFunction)) return false;
+        if (string.Equals(func.Name, patchFunction, StringComparison.Ordinal)) return true;
+        if (string.IsNullOrEmpty(func.OverlayName)) return false;
+        return string.Equals(func.Name, $"{func.OverlayName.ToUpperInvariant()}_{patchFunction}", StringComparison.Ordinal);
+    }
+
     static void ApplyPatches(List<MipsFunction> funcs, Config.PatchEntry[] patches)
     {
         if (patches.Length == 0) return;
@@ -411,7 +453,7 @@ public static class OverlayWriter
             foreach (var func in funcs)
             {
                 if (!patch.MatchesOverlay(func.OverlayName)) continue;
-                bool hit = addr.HasValue ? func.Start == addr.Value : string.Equals(func.Name, patch.Function, StringComparison.Ordinal);
+                bool hit = addr.HasValue ? func.Start == addr.Value : PatchNameMatches(func, patch.Function);
                 if (!hit) continue;
                 matched++;
                 switch (patch.Mode.ToLowerInvariant())

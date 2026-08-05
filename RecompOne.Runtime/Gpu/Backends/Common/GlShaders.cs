@@ -169,7 +169,7 @@ internal static class GlShaders
             BlendColor = texel.a >= 0.5 ? uBlend : uBlendOpaque;
         }
         """;
-
+    
     public static uint Build(GL gl, string vsSrc, string fsSrc, string name)
     {
         uint vs = CompileStage(gl, ShaderType.VertexShader, vsSrc, name);

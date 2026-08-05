@@ -19,18 +19,14 @@ internal sealed class DisplaySettingsSection : ISettingsSection
             ConfigManager.SaveView(PanelManager.Panels);
         }
 
-        bool borderless = ConfigManager.View.BorderlessFullscreen;
-        if (ImGui.Checkbox("Borderless fullscreen", ref borderless))
+        bool vsync = ConfigManager.View.VSync;
+        if (ImGui.Checkbox("VSync", ref vsync))
         {
-            ConfigManager.View.BorderlessFullscreen = borderless;
-            if (ConfigManager.View.Fullscreen)
-            {
-                HostWindow.SetFullscreen(false);
-                HostWindow.SetFullscreen(true);
-            }
+            ConfigManager.View.VSync = vsync;
+            HostWindow.SetVSync(vsync);
             ConfigManager.SaveView(PanelManager.Panels);
         }
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Fills bordeless window instead of exclusive mode");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Syncs with refresh rate");
 
         bool native = ConfigManager.View.NativeResolution;
         if (ImGui.Checkbox("Native resolution", ref native))
@@ -42,6 +38,20 @@ internal sealed class DisplaySettingsSection : ISettingsSection
         }
         if (ConfigManager.View.NativeResolution != (Hle.GlVram.Scale == 1))
             ImGui.TextDisabled("restart is required");
+
+        ImGui.Separator();
+
+        string[] backends = ["auto", "gl45", "gl33"];
+        string current = ConfigManager.View.GpuBackend;
+        int index = Array.IndexOf(backends, current);
+        if (index < 0) index = 0;
+        if (ImGui.Combo("Graphics backend", ref index, backends, backends.Length))
+        {
+            ConfigManager.View.GpuBackend = backends[index];
+            ConfigManager.SaveView(PanelManager.Panels);
+            NoticePopup.Show("You need to restart the application to apply this configuration");
+        }
+        ImGui.TextDisabled($"running: {Hle.GpuBackendFactory.Selected}");
 
         ImGui.Separator();
 

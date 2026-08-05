@@ -22,7 +22,7 @@ public static class HostWindow
     static uint _displayTex;
     static uint _vramTex;
     static uint _ramTex;
-    static Hle.GlBackend? _glBackend;
+    static Hle.GlCore? _glBackend;
 
     static byte[] _rgbDisplay = [];
     static byte[] _rgbVram = [];
@@ -46,7 +46,7 @@ public static class HostWindow
             {
                 Size = new Vector2D<int>(1280, 720),
                 Title = title,
-                VSync = false,
+                VSync = ConfigManager.View.VSync,
                 UpdatesPerSecond = 0,
                 FramesPerSecond = 0,
                 WindowState = ConfigManager.View.Fullscreen ? WindowState.Fullscreen : WindowState.Normal,
@@ -112,40 +112,27 @@ public static class HostWindow
         InputManager.Shutdown();
     }
 
-    static Vector2D<int>? _restoreSize, _restorePos;
-
     public static void SetFullscreen(bool on)
     {
         if (_window == null) return;
+        _window.WindowState = on ? WindowState.Fullscreen : WindowState.Normal;
+        if (on) SetAutoIconify(false);
+    }
 
-        if (!on)
+    static unsafe void SetAutoIconify(bool on)
+    {
+        try
         {
-            _window.WindowState = WindowState.Normal;
-            _window.WindowBorder = WindowBorder.Resizable;
-            if (_restoreSize is { } size) _window.Size = size;
-            if (_restorePos is { } pos) _window.Position = pos;
-            _restoreSize = null;
-            _restorePos = null;
-            return;
+            var handle = _window?.Native?.Glfw;
+            if (handle is not { } h) return;
+            Silk.NET.GLFW.Glfw.GetApi().SetWindowAttrib(
+                (Silk.NET.GLFW.WindowHandle*)h,
+                Silk.NET.GLFW.WindowAttributeSetter.AutoIconify, on);
         }
-
-        if (!ConfigManager.View.BorderlessFullscreen)
+        catch (Exception e)
         {
-            _window.WindowState = WindowState.Fullscreen;
-            return;
+            Console.WriteLine($"[Host] auto-iconify unavailable: {e.Message}");
         }
-
-        if (_restoreSize == null)
-        {
-            _restoreSize = _window.Size;
-            _restorePos = _window.Position;
-        }
-
-        var bounds = (_window.Monitor ?? Silk.NET.Windowing.Monitor.GetMainMonitor(_window)).Bounds;
-        _window.WindowState = WindowState.Normal;
-        _window.WindowBorder = WindowBorder.Hidden;
-        _window.Position = bounds.Origin;
-        _window.Size = bounds.Size;
     }
 
     public static bool IsKeyDown(Key k) => InputManager.IsKeyDown(k);
@@ -193,7 +180,8 @@ public static class HostWindow
         _ramTex = CreateTexture(_gl);
 
         Hle.GlVram.Scale = ConfigManager.View.NativeResolution ? 1 : 4;
-        _glBackend = new Hle.GlBackend(_gl);
+        _glBackend = (Hle.GlCore)Hle.GpuBackendFactory.Create(_gl,
+            Hle.GpuBackendFactory.Parse(ConfigManager.View.GpuBackend));
         _glBackend.InitGl();
         Hle.GpuHle.Active = _glBackend.Ready;
         Hle.GpuHle.Backend = _glBackend;
@@ -241,6 +229,13 @@ public static class HostWindow
 
         if (Config.ConfigManager.ApplyImGuiLayout())
             _layoutPending = false;
+
+        if (ConfigManager.View.Fullscreen) SetAutoIconify(false);
+    }
+
+    public static void SetVSync(bool on)
+    {
+        if (_window != null) _window.VSync = on;
     }
 
     static void OnRender(double dt)
