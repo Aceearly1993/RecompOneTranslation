@@ -73,6 +73,110 @@ public static class HostWindow
 
     public static void SetTitle(string title) => Title = title;
 
+    static Silk.NET.Core.RawImage? _pendingIcon;
+
+    public static void SetIcon(byte[] data)
+    {
+        try
+        {
+            var rgba = Decode(data, out int w, out int h);
+            if (rgba == null)
+            {
+                Console.Error.WriteLine("[Host] icon format not supported");
+                return;
+            }
+            SetIcon(rgba, w, h);
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"[Host] failed to set icon: {e.Message}");
+        }
+    }
+
+    public static void SetIcon(byte[] rgba, int width, int height)
+    {
+        if (width <= 0 || height <= 0 || rgba.Length < width * height * 4)
+        {
+            Console.Error.WriteLine("[Host] icon pixel buffer does not match its size");
+            return;
+        }
+
+        var image = new Silk.NET.Core.RawImage(width, height, rgba);
+        _pendingIcon = image;
+        Apply(image);
+    }
+
+    public static void ClearIcon()
+    {
+        _pendingIcon = null;
+        if (_window == null) return;
+        try { _window.SetWindowIcon(ReadOnlySpan<Silk.NET.Core.RawImage>.Empty); }
+        catch (Exception e) { Console.Error.WriteLine($"[Host] failed to clear icon: {e.Message}"); }
+    }
+
+    static void Apply(Silk.NET.Core.RawImage image)
+    {
+        if (_window == null) return;
+        try
+        {
+            var icons = new[] { image };
+            _window.SetWindowIcon(icons);
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"[Host] failed to set icon: {e.Message}");
+        }
+    }
+
+    static byte[]? Decode(byte[] data, out int width, out int height)
+    {
+        width = height = 0;
+        if (data.Length < 4) return null;
+
+        if (data[0] == 0 && data[1] == 0 && data[2] == 1 && data[3] == 0)
+        {
+            var best = LargestIcoEntry(data);
+            if (best == null) return null;
+            data = best;
+        }
+
+        var img = StbImageSharp.ImageResult.FromMemory(data, StbImageSharp.ColorComponents.RedGreenBlueAlpha);
+        if (img == null) return null;
+        width = img.Width;
+        height = img.Height;
+        return img.Data;
+    }
+
+    static byte[]? LargestIcoEntry(byte[] ico)
+    {
+        int count = BitConverter.ToUInt16(ico, 4);
+        int bestArea = -1;
+        byte[]? best = null;
+
+        for (int i = 0; i < count; i++)
+        {
+            int e = 6 + i * 16;
+            if (e + 16 > ico.Length) break;
+
+            int w = ico[e] == 0 ? 256 : ico[e];
+            int h = ico[e + 1] == 0 ? 256 : ico[e + 1];
+            int size = BitConverter.ToInt32(ico, e + 8);
+            int offset = BitConverter.ToInt32(ico, e + 12);
+            if (size <= 0 || offset < 0 || offset + size > ico.Length) continue;
+
+            bool png = size > 8 && ico[offset] == 0x89 && ico[offset + 1] == 0x50 &&
+                       ico[offset + 2] == 0x4E && ico[offset + 3] == 0x47;
+            if (!png) continue;
+
+            int area = w * h;
+            if (area <= bestArea) continue;
+            bestArea = area;
+            best = ico.AsSpan(offset, size).ToArray();
+        }
+
+        return best;
+    }
+
     public static void Present(Gpu? gpu)
     {
         _gpu = gpu;
@@ -168,6 +272,8 @@ public static class HostWindow
     {
         var input = _window!.CreateInput();
         InputManager.Initialize(input);
+
+        if (_pendingIcon is { } icon) Apply(icon);
 
         _gl = GL.GetApi(_window);
         _gl.ClearColor(0.08f, 0.08f, 0.08f, 1f);

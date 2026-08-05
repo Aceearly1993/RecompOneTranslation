@@ -65,6 +65,12 @@ public static class Runtime
     }
 
     public static void SetTitle(string title) => HostWindow.SetTitle(title);
+
+    public static void SetIcon(byte[] data) => HostWindow.SetIcon(data);
+
+    public static void SetIcon(byte[] rgba, int width, int height) => HostWindow.SetIcon(rgba, width, height);
+
+    public static void ClearIcon() => HostWindow.ClearIcon();
     
     public static void ShowNotice(string message) => Host.Window.NoticePopup.Show(message);
     public static void SetStartupNotice(string message, string title = "Notice", string ackKey = "StartupNoticeAck") => Host.Window.StartupNotice.Set(message, title, ackKey);
