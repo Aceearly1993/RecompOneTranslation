@@ -19,8 +19,7 @@ public interface IGpuBackend
     void ReadVram(int x, int y, int w, int h, Span<ushort> px);
     
     //add other stuff
-    //int RegisterImage(ReadOnlySpan<byte> rgba, int width, int height);
-    //void DrawImage(int imageId, int x, int y, int w, int h);
+    int RegisterImage(ReadOnlySpan<byte> rgba, int width, int height);
 
     // these touch gl
     void Flush();

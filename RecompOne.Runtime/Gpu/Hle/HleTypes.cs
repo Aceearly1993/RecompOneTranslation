@@ -2,19 +2,21 @@ namespace RecompOne.Runtime.Hle;
 
 public struct HleVertex
 {
-    public float X, Y; 
-    public float Z; 
+    public float X, Y;
+    public float Z;
     public byte R, G, B;
-    public short U, V;
+    public float U, V;
     public bool HasGteZ;
 }
 
 public struct PrimFlags
 {
     public bool Textured, SemiTrans, RawTexture, Gouraud;
-    public ushort TPage; 
-    public ushort Clut; 
+    public ushort TPage;
+    public ushort Clut;
     public int OtIndex;
+    public bool UseImage;
+    public int Image;
 
     public readonly int BlendMode => (TPage >> 5) & 3;
 }

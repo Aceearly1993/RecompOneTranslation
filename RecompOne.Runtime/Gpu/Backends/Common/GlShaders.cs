@@ -84,6 +84,9 @@ internal static class GlShaders
 
             if ((inTexpage & 0x8000) != 0) {
                 texMode = 4;
+            } else if ((inTexpage & 0x4000) != 0) {
+                texMode = 5;
+                vUV = inUV;
             } else {
                 texMode = (inTexpage >> 7) & 3;
                 vUV = inUV;
@@ -107,6 +110,7 @@ internal static class GlShaders
 
         uniform sampler2D uVram;
         uniform sampler2D uDest;
+        uniform sampler2D uExtTex;
         uniform ivec4 uTexWindow;
         uniform vec4  uBlend;
         uniform vec4  uBlendOpaque = vec4(1.0, 1.0, 1.0, 0.0);
@@ -144,6 +148,15 @@ internal static class GlShaders
                 return;
             }
 
+            if (texMode == 5) {
+                vec4 img = texture(uExtTex, vUV);
+                if (img.a < 0.5) discard;
+                ivec3 e8 = (ivec3(img.rgb * 255.0 + 0.5) * ivec3(vColor.rgb * 255.0 + 0.5)) >> 7;
+                FragColor = vec4(quant5(e8), uSetMask);
+                BlendColor = uBlend;
+                return;
+            }
+
             int rawU = dFdx(vUV.x) < 0.0 ? int(ceil(vUV.x - 0.0001)) : int(floor(vUV.x + 0.0001));
             int rawV = dFdy(vUV.y) < 0.0 ? int(ceil(vUV.y - 0.0001)) : int(floor(vUV.y + 0.0001));
             ivec2 uv = (ivec2(rawU, rawV) & uTexWindow.xy) | uTexWindow.zw;
@@ -170,6 +183,51 @@ internal static class GlShaders
         }
         """;
     
+    public static uint Build(GL gl, string vsSrc, string fsSrc, string name, out string? error)
+    {
+        error = null;
+        uint vs = CompileStage(gl, ShaderType.VertexShader, vsSrc, name, out string? vsLog);
+        uint fs = CompileStage(gl, ShaderType.FragmentShader, fsSrc, name, out string? fsLog);
+        if (vs == 0 || fs == 0)
+        {
+            error = vsLog ?? fsLog;
+            if (vs != 0) gl.DeleteShader(vs);
+            if (fs != 0) gl.DeleteShader(fs);
+            return 0;
+        }
+
+        uint prog = gl.CreateProgram();
+        gl.AttachShader(prog, vs);
+        gl.AttachShader(prog, fs);
+        gl.LinkProgram(prog);
+        gl.GetProgram(prog, ProgramPropertyARB.LinkStatus, out int ok);
+        if (ok == 0)
+        {
+            error = gl.GetProgramInfoLog(prog);
+            gl.DeleteProgram(prog);
+            prog = 0;
+        }
+        gl.DeleteShader(vs);
+        gl.DeleteShader(fs);
+        return prog;
+    }
+
+    static uint CompileStage(GL gl, ShaderType type, string src, string name, out string? log)
+    {
+        log = null;
+        uint sh = gl.CreateShader(type);
+        gl.ShaderSource(sh, Ascii(src));
+        gl.CompileShader(sh);
+        gl.GetShader(sh, ShaderParameterName.CompileStatus, out int ok);
+        if (ok == 0)
+        {
+            log = $"{type}: {gl.GetShaderInfoLog(sh)}";
+            gl.DeleteShader(sh);
+            return 0;
+        }
+        return sh;
+    }
+
     public static uint Build(GL gl, string vsSrc, string fsSrc, string name)
     {
         uint vs = CompileStage(gl, ShaderType.VertexShader, vsSrc, name);

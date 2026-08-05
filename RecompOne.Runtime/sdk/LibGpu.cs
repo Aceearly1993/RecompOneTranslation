@@ -16,8 +16,15 @@ public static class LibGpu
         if (gpu == null) return;
 
         uint addr = c.A0 & 0x1FFFFCu;
+        bool custom = GpuPrims.Any && GpuPrims.OtLength > 0;
+        uint otBase = GpuPrims.OtBase & 0x1FFFFCu;
+        uint otEnd = otBase + (uint)GpuPrims.OtLength * 4u;
+
         for (int guard = 0; guard < 0x100000; guard++)
         {
+            if (custom && addr >= otBase && addr < otEnd)
+                gpu.EmitCustomOrder((int)((addr - otBase) >> 2));
+
             uint header = m.ReadU32(addr);
             uint count = header >> 24;
             for (uint i = 0; i < count; i++)
@@ -26,6 +33,8 @@ public static class LibGpu
             if (next == 0xFFFFFFu || (next & 0x800000u) != 0) break;
             addr = next & 0x1FFFFCu;
         }
+
+        if (custom) GpuPrims.Clear();
     }
 
     public static void DrawSync(CpuContext c, IMemory m) => c.V0 = 0;
