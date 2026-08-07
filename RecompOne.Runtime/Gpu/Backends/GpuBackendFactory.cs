@@ -10,9 +10,16 @@ public static class GpuBackendFactory //fkn hate these factories
 
     public static IGpuBackend Create(GL gl, GlBackendKind requested)
     {
-        GlBackendKind kind = requested == GlBackendKind.Auto
-            ? (Supports45(gl) ? GlBackendKind.Gl45 : GlBackendKind.Gl33)
+        bool has45 = Supports45(gl);
+        GlBackendKind kind = requested == GlBackendKind.Auto //if gl45 is not availble fallback to 33 so that it works 
+            ? (has45 ? GlBackendKind.Gl45 : GlBackendKind.Gl33)
             : requested;
+
+        if (kind == GlBackendKind.Gl45 && !has45)
+        {
+            Console.WriteLine("[Gpu] gl45 requested but the support by your gpu is below 4.5, falling back to gl33");
+            kind = GlBackendKind.Gl33;
+        }
 
         Selected = kind;
         IGlVram vram = kind == GlBackendKind.Gl45 ? new Gl45Vram(gl) : new Gl33Vram(gl);

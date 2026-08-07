@@ -50,7 +50,7 @@ public static class HostWindow
                 UpdatesPerSecond = 0,
                 FramesPerSecond = 0,
                 WindowState = ConfigManager.View.Fullscreen ? WindowState.Fullscreen : WindowState.Normal,
-                API = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.Default, new APIVersion(4, 5)),
+                API = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.ForwardCompatible, new APIVersion(3, 3)),
             };
             _window = Silk.NET.Windowing.Window.Create(options);
             _window.Load += OnLoad;
