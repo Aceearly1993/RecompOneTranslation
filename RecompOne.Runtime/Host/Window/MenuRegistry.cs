@@ -4,7 +4,7 @@ namespace RecompOne.Runtime.Host.Window;
 
 public static class MenuRegistry
 {
-    public const int OrderSettings = 0;
+    public const int OrderSystem = 0;
     public const int OrderMods = 100;
     public const int OrderDebug = 400;
     public const int OrderDefault = 500;

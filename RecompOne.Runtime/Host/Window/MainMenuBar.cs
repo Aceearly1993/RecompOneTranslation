@@ -11,7 +11,7 @@ internal static class MainMenuBar
     {
         if (_registered) return;
         _registered = true;
-        MenuRegistry.Register("Settings", ConfigMenu, null, MenuRegistry.OrderSettings);
+        MenuRegistry.Register("System", ConfigMenu, null, MenuRegistry.OrderSystem);
         MenuRegistry.Register("Mods", ModsMenu, null, MenuRegistry.OrderMods);
         MenuRegistry.Register("Debug", DebugMenu, null, MenuRegistry.OrderDebug);
     }
@@ -25,7 +25,7 @@ internal static class MainMenuBar
 
     static void ConfigMenu()
     {
-        if (ImGui.MenuItem("Settings..."))
+        if (ImGui.MenuItem("Settings"))
             if (PanelManager.Get<SettingsPopup>() is { } popup) popup.IsOpen = true;
 
         ImGui.Separator();
@@ -37,12 +37,37 @@ internal static class MainMenuBar
             ConfigManager.SaveView(PanelManager.Panels);
         }
 
+        bool autoHideMenuBar = ConfigManager.View.AutoHideMenuBar;
+        if (ImGui.MenuItem("Autohide Menu Bar", null, autoHideMenuBar))
+        {
+            ConfigManager.View.HideTopBar = showBar;
+        }
+
         bool fs = ConfigManager.View.Fullscreen;
         if (ImGui.MenuItem("Fullscreen", "F11", fs))
         {
             ConfigManager.View.Fullscreen = !fs;
             HostWindow.SetFullscreen(!fs);
             ConfigManager.SaveView(PanelManager.Panels);
+        }
+
+        ImGui.Separator();
+
+        if(ImGui.MenuItem("Soft Reset"))
+        {
+            
+        }
+
+        if(ImGui.MenuItem("Hard Reset"))
+        {
+            
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Quit"))
+        {
+            Environment.Exit(0);
         }
     }
 

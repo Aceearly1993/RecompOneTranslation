@@ -38,6 +38,12 @@ public class ViewConfig
         set => SetBool("HideTopBar", value);
     }
 
+    public bool AutoHideMenuBar
+    {
+        get => GetBool("AutoHideMenuBar");
+        set => SetBool("AutoHideMenuBar", value);
+    }
+
     public bool Fullscreen
     {
         get => GetBool("Fullscreen");

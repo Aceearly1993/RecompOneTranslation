@@ -64,7 +64,7 @@ public class GameConfig
     public string CardBPath { get; set; } = "cardb.sav";
     public bool CardAEnabled { get; set; } = true;
     public bool CardBEnabled { get; set; } = true;
-    public float MasterVolume { get; set; } = 1.0f;
+    public float MasterVolume { get; set; } = 0.5f; // We don't wanna bust your ear drums out on initial run <3
     public float SpuVolume { get; set; } = 1.0f;
     public float XaVolume { get; set; } = 1.0f;
     public bool Muted { get; set; } = false;
