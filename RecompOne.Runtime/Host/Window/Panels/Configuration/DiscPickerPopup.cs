@@ -1,7 +1,7 @@
 using System.Numerics;
 using System.Text;
 using ImGuiNET;
-using NativeFileDialogSharp;
+using NativeFileDialogNET;
 using RecompOne.Runtime.Config;
 
 namespace RecompOne.Runtime.Host.Window;
@@ -105,14 +105,15 @@ internal sealed class DiscPickerPopup : IPanel
             else if (currentPath.Length > 0 && Directory.Exists(currentPath))
                 defaultDir = Path.GetFullPath(currentPath);
 
-            var result = Dialog.FileOpen("cue", defaultDir);
-            if (result.IsOk && !string.IsNullOrWhiteSpace(result.Path))
+            using var dialog = new NativeFileDialog().SelectFile().AddFilter("Disc image", "cue");
+            var result = dialog.Open(out string? picked, defaultDir);
+            if (result == DialogResult.Okay && !string.IsNullOrWhiteSpace(picked))
             {
-                SetPathBuf(result.Path);
+                SetPathBuf(picked);
             }
-            else if (result.IsError)
+            else if (result == DialogResult.Error)
             {
-                _error = $"Dialog error: {result.ErrorMessage}";
+                _error = "Dialog error";
             }
         }
         catch (Exception ex)

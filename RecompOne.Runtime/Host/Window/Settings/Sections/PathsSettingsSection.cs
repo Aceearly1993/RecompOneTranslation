@@ -1,6 +1,6 @@
 using System.Numerics;
 using ImGuiNET;
-using NativeFileDialogSharp;
+using NativeFileDialogNET;
 using RecompOne.Runtime.Config;
 
 namespace RecompOne.Runtime.Host.Window;
@@ -96,10 +96,13 @@ internal sealed class PathsSettingsSection : ISettingsSection
             {
             }
 
-            var dialog = save ? Dialog.FileSave(filter, dir) : Dialog.FileOpen(filter, dir);
-            if (dialog.IsOk && !string.IsNullOrWhiteSpace(dialog.Path))
+            using var dialog = new NativeFileDialog();
+            if (save) dialog.SaveFile(); else dialog.SelectFile();
+            if (!string.IsNullOrWhiteSpace(filter)) dialog.AddFilter("Files", filter);
+
+            if (dialog.Open(out string? picked, dir) == DialogResult.Okay && !string.IsNullOrWhiteSpace(picked))
             {
-                result = dialog.Path;
+                result = picked;
                 changed = true;
             }
         }
