@@ -37,11 +37,13 @@ internal static class MainMenuBar
             ConfigManager.SaveView(PanelManager.Panels);
         }
 
+        ImGui.BeginDisabled();
         bool autoHideMenuBar = ConfigManager.View.AutoHideMenuBar;
         if (ImGui.MenuItem("Autohide Menu Bar", null, autoHideMenuBar))
         {
             ConfigManager.View.HideTopBar = showBar;
         }
+        ImGui.EndDisabled();
 
         bool fs = ConfigManager.View.Fullscreen;
         if (ImGui.MenuItem("Fullscreen", "F11", fs))
@@ -53,6 +55,7 @@ internal static class MainMenuBar
 
         ImGui.Separator();
 
+        ImGui.BeginDisabled();
         if(ImGui.MenuItem("Soft Reset"))
         {
             
@@ -62,6 +65,7 @@ internal static class MainMenuBar
         {
             
         }
+        ImGui.EndDisabled();
 
         ImGui.Separator();
 
@@ -73,8 +77,15 @@ internal static class MainMenuBar
 
     static void ModsMenu()
     {
-        if (ImGui.MenuItem("Mods..."))
+        if (ImGui.MenuItem("View Mod Panel"))
             if (PanelManager.Get<Modding.ModsPopup>() is { } popup) popup.IsOpen = true;
+
+        ImGui.BeginDisabled();
+        if (ImGui.MenuItem("Explore Mod Hub"))
+        {
+            
+        }
+        ImGui.EndDisabled();
     }
 
     static void DebugMenu()
