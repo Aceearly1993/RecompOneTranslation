@@ -29,13 +29,51 @@ public static class GpuBackendFactory //fkn hate these factories
 
     static bool Supports45(GL gl)
     {
+        int major = 0, minor = 0;
         try
         {
-            int major = gl.GetInteger(GLEnum.MajorVersion);
-            int minor = gl.GetInteger(GLEnum.MinorVersion);
-            return major > 4 || (major == 4 && minor >= 5);
+            major = gl.GetInteger(GLEnum.MajorVersion);
+            minor = gl.GetInteger(GLEnum.MinorVersion);
         }
-        catch { return false; }
+        catch (Exception e)
+        {
+            Console.WriteLine($"[Gpu] could not read the context version: {e.Message}");
+        }
+
+        string version = Str(gl, StringName.Version);
+        string renderer = Str(gl, StringName.Renderer);
+        Console.WriteLine($"[Gpu] context: {major}.{minor} ({version}) on {renderer}");
+
+        if (major > 4 || (major == 4 && minor >= 5)) return true;
+
+        bool barrier = HasExtension(gl, "GL_ARB_texture_barrier");
+        bool copyImage = HasExtension(gl, "GL_ARB_copy_image");
+        if (barrier && copyImage)
+        {
+            Console.WriteLine("[Gpu] context is below 4.5 but exposes texture barrier and copy image");
+            return true;
+        }
+
+        Console.WriteLine($"[Gpu] gl45 unavailable (texture barrier: {barrier}, copy image: {copyImage})");
+        return false;
+    }
+
+    static bool HasExtension(GL gl, string name)
+    {
+        try
+        {
+            int count = gl.GetInteger(GLEnum.NumExtensions);
+            for (uint i = 0; i < count; i++)
+                if (gl.GetStringS(StringName.Extensions, i) == name) return true;
+        }
+        catch { }
+        return false;
+    }
+
+    static string Str(GL gl, StringName name)
+    {
+        try { return gl.GetStringS(name) ?? "?"; }
+        catch { return "?"; }
     }
 
     public static GlBackendKind Parse(string? s) => s?.ToLowerInvariant() switch

@@ -36,6 +36,47 @@ public static class HostWindow
     static bool _closed;
     static DiscPickerPopup? _discPicker;
 
+    static float _dpiScale = 1f;
+
+    public static float DpiScale => _dpiScale;
+
+    static unsafe float QueryDpiScale()
+    {
+        try
+        {
+            var glfw = Silk.NET.GLFW.Glfw.GetApi();
+            var monitor = glfw.GetPrimaryMonitor();
+            if (monitor != null)
+            {
+                glfw.GetMonitorContentScale(monitor, out float xs, out float ys);
+                float s = MathF.Max(xs, ys);
+                if (s >= 0.5f && s <= 8f) return s;
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"[Host] cant read scale: {e.Message}");
+        }
+
+        try
+        {
+            var fb = _window!.FramebufferSize;
+            var size = _window.Size;
+            if (size.X > 0 && fb.X > 0)
+            {
+                float s = (float)fb.X / size.X;
+                if (s >= 0.5f && s <= 8f) return s;
+            }
+        }
+        catch { }
+
+        return 1f;
+    }
+
+    static GraphicsAPI MaxSupportedApi() => OperatingSystem.IsMacOS()
+        ? new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.ForwardCompatible, new APIVersion(4, 1))
+        : new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.Default, new APIVersion(4, 5));
+
     public static void Initialize(string title)
     {
         ConfigManager.Load();
@@ -50,7 +91,7 @@ public static class HostWindow
                 UpdatesPerSecond = 0,
                 FramesPerSecond = 0,
                 WindowState = ConfigManager.View.Fullscreen ? WindowState.Fullscreen : WindowState.Normal,
-                API = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.ForwardCompatible, new APIVersion(3, 3)),
+                API = MaxSupportedApi(),
             };
             _window = Silk.NET.Windowing.Window.Create(options);
             _window.Load += OnLoad;
@@ -325,13 +366,17 @@ public static class HostWindow
 
     static void ConfigureImGui()
     {
+        _dpiScale = QueryDpiScale();
+        Console.WriteLine($"[Host] display scale: {_dpiScale:0.##}x");
+
         var io = ImGui.GetIO();
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
         io.ConfigWindowsMoveFromTitleBarOnly = true;
         io.FontGlobalScale = Config.ConfigManager.View.UiScale;
         unsafe { io.NativePtr->IniFilename = null; }
 
-        Icons.Load(13f);
+        Icons.Load(13f * _dpiScale);
+        ImGui.GetStyle().ScaleAllSizes(_dpiScale);
 
         if (Config.ConfigManager.ApplyImGuiLayout())
             _layoutPending = false;
