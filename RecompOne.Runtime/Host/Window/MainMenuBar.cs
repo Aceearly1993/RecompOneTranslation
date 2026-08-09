@@ -11,7 +11,7 @@ internal static class MainMenuBar
     {
         if (_registered) return;
         _registered = true;
-        MenuRegistry.Register("Settings", ConfigMenu, null, MenuRegistry.OrderSettings);
+        MenuRegistry.Register("System", ConfigMenu, null, MenuRegistry.OrderSystem);
         MenuRegistry.Register("Mods", ModsMenu, null, MenuRegistry.OrderMods);
         MenuRegistry.Register("Debug", DebugMenu, null, MenuRegistry.OrderDebug);
     }
@@ -25,7 +25,7 @@ internal static class MainMenuBar
 
     static void ConfigMenu()
     {
-        if (ImGui.MenuItem("Settings..."))
+        if (ImGui.MenuItem("Settings"))
             if (PanelManager.Get<SettingsPopup>() is { } popup) popup.IsOpen = true;
 
         ImGui.Separator();
@@ -37,6 +37,14 @@ internal static class MainMenuBar
             ConfigManager.SaveView(PanelManager.Panels);
         }
 
+        ImGui.BeginDisabled();
+        bool autoHideMenuBar = ConfigManager.View.AutoHideMenuBar;
+        if (ImGui.MenuItem("Autohide Menu Bar", null, autoHideMenuBar))
+        {
+            ConfigManager.View.HideTopBar = showBar;
+        }
+        ImGui.EndDisabled();
+
         bool fs = ConfigManager.View.Fullscreen;
         if (ImGui.MenuItem("Fullscreen", "F11", fs))
         {
@@ -44,12 +52,40 @@ internal static class MainMenuBar
             HostWindow.SetFullscreen(!fs);
             ConfigManager.SaveView(PanelManager.Panels);
         }
+
+        ImGui.Separator();
+
+        ImGui.BeginDisabled();
+        if(ImGui.MenuItem("Soft Reset"))
+        {
+            
+        }
+
+        if(ImGui.MenuItem("Hard Reset"))
+        {
+            
+        }
+        ImGui.EndDisabled();
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Quit"))
+        {
+            Environment.Exit(0);
+        }
     }
 
     static void ModsMenu()
     {
-        if (ImGui.MenuItem("Mods..."))
+        if (ImGui.MenuItem("View Mod Panel"))
             if (PanelManager.Get<Modding.ModsPopup>() is { } popup) popup.IsOpen = true;
+
+        ImGui.BeginDisabled();
+        if (ImGui.MenuItem("Explore Mod Hub"))
+        {
+            
+        }
+        ImGui.EndDisabled();
     }
 
     static void DebugMenu()
