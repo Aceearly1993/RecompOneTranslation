@@ -34,7 +34,11 @@ public static class HostWindow
 
     static bool _layoutPending = true;
     static bool _closed;
-    static DiscPickerPopup? _discPicker;
+
+    const int RedockCooldownFrames = 8;
+    static int _redockCooldown;
+
+    public static void RequestLayout() => _layoutPending = true;
 
     static float _dpiScale = 1f;
 
@@ -282,13 +286,13 @@ public static class HostWindow
 
     public static bool IsKeyDown(Key k) => InputManager.IsKeyDown(k);
 
-    public static void RequestDiscPath() => _discPicker?.Show();
+    public static void RequestDiscPath() => PopupManager.Open<DiscPickerPopup>();
 
     public static void WaitForValidDisc() // wait for disc path to be valid before running it!!
     {
         if (_headless || _window == null) return;
 
-        while (StartupNotice.NeedsAck)
+        while (StartupNoticePopup.NeedsAck)
         {
             try { _window.DoEvents(); } catch { }
             if (_window.IsClosing) { Runtime.Shutdown(); Environment.Exit(0); }
@@ -345,23 +349,27 @@ public static class HostWindow
         PanelManager.Register(new CdDebugPanel());
         PanelManager.Register(new ConsolePanel());
         PanelManager.Register(new OverlayEventsPanel());
-        PanelManager.Register(new SettingsPopup());
-        PanelManager.Register(new Modding.ModsPopup());
+
+        PopupManager.Register(new SettingsPopup());
+        PopupManager.Register(new ModsPopup());
+        PopupManager.Register(new ModLoadingPopup());
+        PopupManager.Register(new NoticePopup());
+        PopupManager.Register(new StartupNoticePopup());
+        PopupManager.Register(new DiscPickerPopup());
+
         MainMenuBar.RegisterBuiltins();
 
+        SettingsRegistry.Register(new InterfaceSettingsSection());
         SettingsRegistry.Register(new InputSettingsSection());
         SettingsRegistry.Register(new DisplaySettingsSection());
         SettingsRegistry.Register(new PathsSettingsSection());
         SettingsRegistry.Register(new AudioSettingsSection());
 
-        _discPicker = new DiscPickerPopup();
-        PanelManager.Register(_discPicker);
-
         ConfigManager.ApplyViewToPanels(PanelManager.Panels);
 
         var cdPath = ConfigManager.Game.CdPath;
         if (string.IsNullOrWhiteSpace(cdPath) || !File.Exists(cdPath) || Runtime.ValidateDisc(cdPath) != null)
-            _discPicker.Show();
+            PopupManager.Open<DiscPickerPopup>();
     }
 
     static void ConfigureImGui()
@@ -376,7 +384,8 @@ public static class HostWindow
         unsafe { io.NativePtr->IniFilename = null; }
 
         Icons.Load(13f * _dpiScale);
-        ImGui.GetStyle().ScaleAllSizes(_dpiScale);
+        Localization.Load();
+        Theme.Load();
 
         if (Config.ConfigManager.ApplyImGuiLayout())
             _layoutPending = false;
@@ -397,7 +406,8 @@ public static class HostWindow
         gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
         var fbDef = _window!.FramebufferSize;
         gl.Viewport(0, 0, (uint)fbDef.X, (uint)fbDef.Y);
-        gl.ClearColor(0.08f, 0.08f, 0.08f, 1f);
+        var clear = Window.Theme.Background;
+        gl.ClearColor(clear.X, clear.Y, clear.Z, 1f);
         gl.Clear(ClearBufferMask.ColorBufferBit);
 
         Runtime.RamLog.Tick();
@@ -441,10 +451,7 @@ public static class HostWindow
 
         DrawDockspace();
         PanelManager.DrawPanels();
-        MenuRegistry.DrawWindows();
-        Modding.ModLoadingPopup.Draw();
-        NoticePopup.Draw();
-        if (StartupNotice.NeedsAck) StartupNotice.Draw();
+        PopupManager.Draw();
         gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
         gl.Viewport(0, 0, (uint)fbDef.X, (uint)fbDef.Y);
         _imgui.Render();
@@ -475,10 +482,17 @@ public static class HostWindow
         var dockFlags = openCount <= 1 ? (ImGuiDockNodeFlags)4096 : ImGuiDockNodeFlags.None;
         ImGui.DockSpace(dockId, Vector2.Zero, dockFlags);
 
+        if (openCount <= 1 && !OutputPanel.IsDocked && _redockCooldown == 0)
+            _layoutPending = true;
+
+        if (_redockCooldown > 0) _redockCooldown--;
+
         if (_layoutPending)
         {
             _layoutPending = false;
-            DockBuilder.SetupCenterLayout(dockId, viewport.WorkSize, "Output");
+            _redockCooldown = RedockCooldownFrames;
+            if (PanelManager.Get<OutputPanel>() is { } output)
+                DockBuilder.SetupCenterLayout(dockId, viewport.WorkSize, output.Title());
         }
 
         ImGui.End();
@@ -491,6 +505,7 @@ public static class HostWindow
         ConfigManager.SaveView(PanelManager.Panels);
         ConfigManager.SaveGame();
         PanelManager.Shutdown();
+        PopupManager.Shutdown();
         _glBackend?.Dispose();
         _imgui?.Dispose();
         _gl?.DeleteTexture(_displayTex);

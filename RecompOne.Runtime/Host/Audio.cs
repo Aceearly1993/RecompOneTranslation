@@ -72,6 +72,8 @@ internal static unsafe class Audio
         spu.XaGain = Config.ConfigManager.Game.XaVolume;
     }
 
+    public static void Detach() => _spu = null;
+
     public static void SetMasterVolume(float volume)
     {
         _masterVolume = Math.Clamp(volume, 0f, 1f);
