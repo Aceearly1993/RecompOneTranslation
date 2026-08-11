@@ -43,6 +43,8 @@ internal sealed class OutputPanel : IPanel
             ImGui.Image((nint)_texId, imageSize);
         }
 
+        ToastNotifications.Draw();
+
         ImGui.End();
         ImGui.PopStyleColor();
     }

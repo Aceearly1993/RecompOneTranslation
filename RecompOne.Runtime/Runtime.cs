@@ -111,7 +111,7 @@ public static class Runtime
             }
             catch (HardResetSignal)
             {
-                Console.WriteLine("[Runtime] hard reset, game booting again");
+                Console.WriteLine("[Runtime] hard reset,game booting again");
                 ResetForBoot();
             }
         }

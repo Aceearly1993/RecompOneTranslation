@@ -37,6 +37,9 @@ public static class Theme
 
     public static Vector4 TitleBar => Shade(Accent, IsLight ? 0.05f : -0.15f);
 
+    public static Vector4 AccentText => IsLight ? Vector4.Lerp(Accent, Vector4.Zero, 0.25f) with { W = 1f }
+        : Vector4.Lerp(Accent, Vector4.One, 0.45f) with { W = 1f };//text be correct color thee
+    
     public static Vector4 TitleBarText => Luminance(TitleBar) > 0.6f
         ? new Vector4(0.06f, 0.06f, 0.07f, 1f)
         : new Vector4(1f, 1f, 1f, 0.95f);
