@@ -65,6 +65,26 @@
       "pt-BR": "GPU",
       "es-419": "GPU"
     },
+    "menu.debug.dump_textures": {
+      "en": "Dump textures",
+      "pt-BR": "Extrair texturas",
+      "es-419": "Extraer texturas"
+    },
+    "menu.debug.dump_pages": {
+      "en": "Dump texture pages",
+      "pt-BR": "Extrair páginas de textura",
+      "es-419": "Extraer páginas de textura"
+    },
+    "menu.debug.dump_pages.tooltip": {
+      "en": "Write the whole 256x256 texture page each tile comes from to dump/<game>/pages",
+      "pt-BR": "Grava a página de textura inteira (256x256) de onde cada tile vem em dump/<jogo>/pages",
+      "es-419": "Guarda la página de textura completa (256x256) de cada tile en dump/<juego>/pages"
+    },
+    "menu.debug.dump_textures.tooltip": {
+      "en": "Write every newly seen texture to dump/<game>/textures as PNG + raw data + hash json",
+      "pt-BR": "Grava cada textura nova em dump/<jogo>/textures como PNG + dados crus + json do hash",
+      "es-419": "Guarda cada textura nueva en dump/<juego>/textures como PNG + datos crudos + json del hash"
+    },
     "menu.debug.cpu": {
       "en": "CPU",
       "pt-BR": "CPU",
@@ -104,6 +124,11 @@
       "en": "VRAM Viewer",
       "pt-BR": "Visualizador de VRAM",
       "es-419": "Visor de VRAM"
+    },
+    "panel.texture_inspector": {
+      "en": "Texture Inspector",
+      "pt-BR": "Inspetor de Texturas",
+      "es-419": "Inspector de Texturas"
     },
     "panel.cpu_state": {
       "en": "CPU State",

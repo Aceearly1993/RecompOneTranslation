@@ -70,6 +70,7 @@ internal static class GlShaders
         flat out ivec2 pageBase;
         flat out int   texMode;
         flat out int   vDither;
+        flat out int   vRepClut;
 
         uniform vec2 uVertexOffset;
         uniform vec2 uPosBias;
@@ -81,11 +82,15 @@ internal static class GlShaders
 
             vColor = vec4(float(inColor & 0xFFu), float((inColor >> 8) & 0xFFu), float((inColor >> 16) & 0xFFu), 0.0) / 255.0;
             vDither = (inTexpage >> 10) & 1;
+            vRepClut = (inTexpage >> 12) & 1;
 
             if ((inTexpage & 0x8000) != 0) {
                 texMode = 4;
             } else if ((inTexpage & 0x4000) != 0) {
                 texMode = 5;
+                vUV = inUV;
+            } else if ((inTexpage & 0x2000) != 0) {
+                texMode = 6;
                 vUV = inUV;
             } else {
                 texMode = (inTexpage >> 7) & 3;
@@ -104,6 +109,7 @@ internal static class GlShaders
         flat in ivec2 pageBase;
         flat in int   texMode;
         flat in int   vDither;
+        flat in int   vRepClut;
 
         layout(location = 0, index = 0) out vec4 FragColor;
         layout(location = 0, index = 1) out vec4 BlendColor;
@@ -111,6 +117,10 @@ internal static class GlShaders
         uniform sampler2D uVram;
         uniform sampler2D uDest;
         uniform sampler2D uExtTex;
+        uniform sampler2D uRepTex;
+        uniform sampler2D uRepClut;
+        uniform vec4  uRepRect;
+        uniform float uRepClutCount;
         uniform ivec4 uTexWindow;
         uniform vec4  uBlend;
         uniform vec4  uBlendOpaque = vec4(1.0, 1.0, 1.0, 0.0);
@@ -161,18 +171,45 @@ internal static class GlShaders
             int rawV = dFdy(vUV.y) < 0.0 ? int(ceil(vUV.y - 0.0001)) : int(floor(vUV.y + 0.0001));
             ivec2 uv = (ivec2(rawU, rawV) & uTexWindow.xy) | uTexWindow.zw;
             uv &= ivec2(0xff);
+
+            if (texMode == 6) {
+                vec2 win = vec2(uTexWindow.xy) + 1.0;
+                vec2 fuv = mod(vUV, win) + vec2(uTexWindow.zw);
+                vec2 t = (fuv - uRepRect.xy) / uRepRect.zw;
+                vec4 img = texture(uRepTex, t);
+                if (img.a < 0.5) discard;
+                ivec3 e8 = (ivec3(img.rgb * 255.0 + 0.5) * ivec3(vColor.rgb * 255.0 + 0.5)) >> 7;
+                float stp = img.a < 0.95 ? 1.0 : 0.0;
+                FragColor = vec4(quant5(e8), max(stp, uSetMask));
+                BlendColor = stp > 0.5 ? uBlend : uBlendOpaque;
+                return;
+            }
+
             vec4 texel;
 
             if (texMode == 0) {
                 int s = fetch16(ivec2(pageBase.x + (uv.x >> 2), pageBase.y + uv.y));
                 int idx = (s >> ((uv.x & 3) << 2)) & 0xf;
-                texel = fetch(ivec2(clutBase.x + idx, clutBase.y));
+                texel = vRepClut != 0
+                    ? texture(uRepClut, vec2((float(idx) + 0.5) / uRepClutCount, 0.5))
+                    : fetch(ivec2(clutBase.x + idx, clutBase.y));
             } else if (texMode == 1) {
                 int s = fetch16(ivec2(pageBase.x + (uv.x >> 1), pageBase.y + uv.y));
                 int idx = (s >> ((uv.x & 1) << 3)) & 0xff;
-                texel = fetch(ivec2(clutBase.x + idx, clutBase.y));
+                texel = vRepClut != 0
+                    ? texture(uRepClut, vec2((float(idx) + 0.5) / uRepClutCount, 0.5))
+                    : fetch(ivec2(clutBase.x + idx, clutBase.y));
             } else {
                 texel = fetch(ivec2(pageBase.x + uv.x, pageBase.y + uv.y));
+            }
+
+            if (vRepClut != 0 && texMode != 2) {
+                if (texel.a < 0.5) discard;
+                ivec3 e8 = (ivec3(texel.rgb * 255.0 + 0.5) * ivec3(vColor.rgb * 255.0 + 0.5)) >> 7;
+                float stp = texel.a < 0.95 ? 1.0 : 0.0;
+                FragColor = vec4(quant5(e8), max(stp, uSetMask));
+                BlendColor = stp > 0.5 ? uBlend : uBlendOpaque;
+                return;
             }
 
             if (texel.rgb == vec3(0.0) && texel.a < 0.5) discard;

@@ -123,6 +123,7 @@ public static class Runtime
 
         Sdk.LibCd.Reset();
         Sdk.LibCdStream.Reset();
+        Assets.Xa.XaRouter.Reset();
         Sdk.LibPad.Reset();
         Dispatch.Dispatcher.Reset();
         Bios.BiosB.Reset();

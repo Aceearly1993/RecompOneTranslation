@@ -342,6 +342,7 @@ public static class HostWindow
 
         PanelManager.Register(new OutputPanel());
         PanelManager.Register(new VramViewerPanel());
+        PanelManager.Register(new TextureInspectorPanel());
         PanelManager.Register(new CpuStatePanel());
         PanelManager.Register(new RamMapPanel());
         PanelManager.Register(new MemoryEditorPanel());

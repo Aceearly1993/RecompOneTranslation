@@ -184,7 +184,7 @@ public static class LibCdStream
             try { lock (LibCd.DiscLock) sec = cd.ReadSectorData(_streamLba, 2336); }
             catch { Thread.Sleep(2); continue; }
 
-            if ((sec[2] & 0x04) != 0) { XaAudio.DecodeSector(sec, 8, sec[3]); _streamLba++; continue; }
+            if ((sec[2] & 0x04) != 0) { Assets.Xa.XaRouter.Sector(_streamLba, sec, true); _streamLba++; continue; }
             if (Read16(sec, 8) != VideoMagic || Read16(sec, 12) != 0) { _streamLba++; continue; }
 
             int n = Read16(sec, 14);
@@ -225,7 +225,7 @@ public static class LibCdStream
             catch { return false; }
             lba++;
 
-            if ((sec[2] & 0x04) != 0) { XaAudio.DecodeSector(sec, 8, sec[3]); continue; }
+            if ((sec[2] & 0x04) != 0) { Assets.Xa.XaRouter.Sector(lba - 1, sec, true); continue; }
             if (Read16(sec, 8) != VideoMagic) continue;
 
             uint hdr = _statusBase + (uint)((start + collected) * HeaderSize);

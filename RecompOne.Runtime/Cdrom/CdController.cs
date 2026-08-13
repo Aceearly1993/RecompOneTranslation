@@ -164,6 +164,7 @@ public sealed class CdController
         BiosA.SetFs(fs);
         BiosA.SetCd(this);
         Runtime.Cd = this;
+        Assets.AssetReplacerManager.Instance.LoadAll();
     }
 
     public void LoadToMemory(string path, uint address, int offset = 0, int length = -1)

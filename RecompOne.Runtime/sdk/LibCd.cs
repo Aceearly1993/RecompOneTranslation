@@ -188,10 +188,25 @@ public static class LibCd
             lock (DiscLock) sec = Runtime.Cd.ReadSectorData(lba, 2336);
             AdvancePos(1);
             scanned++;
-            if ((sec[2] & 0x04) == 0) continue;
-            if (useFilter && (sec[0] != _filterFile || sec[1] != _filterChannel)) continue;
-            XaAudio.DecodeSector(sec, 8, sec[3]);
+            if ((sec[2] & 0x04) == 0) { CarrierMiss(); continue; }
+            if (useFilter && (sec[0] != _filterFile || sec[1] != _filterChannel)) { CarrierMiss(); continue; }
+            _carrierMiss = 0;
+            Assets.Xa.XaRouter.Sector(lba, sec, false);
         }
+
+        Assets.Xa.XaRouter.PumpTail();
+    }
+
+    const int CarrierMissLimit = 96;
+    static int _carrierMiss;
+
+    static void CarrierMiss()
+    {
+        if (++_carrierMiss < CarrierMissLimit) return;
+        _carrierMiss = 0;
+        if (!Assets.Xa.XaRouter.WantsCarrier(out int rewindLba)) return;
+        lock (_posGate) IntToPos(rewindLba, out _pos[0], out _pos[1], out _pos[2]);
+        Log.Sdk($"[assets] xa carrier rewinds to {rewindLba}");
     }
 
     static void AdvancePos(int n)
