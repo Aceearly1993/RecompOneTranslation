@@ -330,10 +330,20 @@
       "pt-BR": "Sincroniza com a taxa de atualização do monitor",
       "es-419": "Se sincroniza con la tasa de refresco del monitor"
     },
-    "settings.display.native_resolution": {
-      "en": "Native resolution",
-      "pt-BR": "Resolução nativa",
-      "es-419": "Resolución nativa"
+    "settings.display.render_scale": {
+      "en": "Render scale",
+      "pt-BR": "Escala de renderização",
+      "es-419": "Escala de renderizado"
+    },
+    "settings.display.render_scale_hint": {
+      "en": "Internal resolution multiplier. 1x is the original PSX output.",
+      "pt-BR": "Multiplicador da resolução interna. 1x é a saída original do PSX.",
+      "es-419": "Multiplicador de la resolución interna. 1x es la salida original de PSX."
+    },
+    "settings.display.render_scale_lines": {
+      "en": "{1} lines in the current context, {3} after scale ({4}x)",
+      "pt-BR": "{1} linhas no contexto atual, {3} após a escala ({4}x)",
+      "es-419": "{1} líneas en el contexto actual, {3} tras la escala ({4}x)"
     },
     "settings.display.restart_pending": {
       "en": "restart is required",

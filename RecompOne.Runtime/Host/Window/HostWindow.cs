@@ -77,37 +77,60 @@ public static class HostWindow
         return 1f;
     }
 
-    static GraphicsAPI MaxSupportedApi() => OperatingSystem.IsMacOS()
-        ? new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.ForwardCompatible, new APIVersion(4, 1))
-        : new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.Default, new APIVersion(4, 5));
+    static GraphicsAPI[] ApiChain()
+    {
+        if (OperatingSystem.IsMacOS())
+            return [new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.ForwardCompatible, new APIVersion(4, 1))];
+
+        var requested = Hle.GpuBackendFactory.Parse(ConfigManager.View.GpuBackend);
+        var core45 = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.Default, new APIVersion(4, 5));
+        var core33 = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.Default, new APIVersion(3, 3));
+        var compat21 = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Compatability, ContextFlags.Default, new APIVersion(2, 1));
+
+        return requested switch
+        {
+            Hle.GlBackendKind.Gl21 => [compat21],
+            Hle.GlBackendKind.Gl33 => [core33, compat21],
+            _ => [core45, core33, compat21],
+        };
+    }
 
     public static void Initialize(string title)
     {
         ConfigManager.Load();
 
-        try
+        foreach (var api in ApiChain())
         {
-            var options = WindowOptions.Default with
+            try
             {
-                Size = new Vector2D<int>(1280, 720),
-                Title = title,
-                VSync = ConfigManager.View.VSync,
-                UpdatesPerSecond = 0,
-                FramesPerSecond = 0,
-                WindowState = ConfigManager.View.Fullscreen ? WindowState.Fullscreen : WindowState.Normal,
-                API = MaxSupportedApi(),
-            };
-            _window = Silk.NET.Windowing.Window.Create(options);
-            _window.Load += OnLoad;
-            _window.Render += OnRender;
-            _window.Closing += OnClosing;
-            _window.Initialize();
+                var options = WindowOptions.Default with
+                {
+                    Size = new Vector2D<int>(1280, 720),
+                    Title = title,
+                    VSync = ConfigManager.View.VSync,
+                    UpdatesPerSecond = 0,
+                    FramesPerSecond = 0,
+                    WindowState = ConfigManager.View.Fullscreen ? WindowState.Fullscreen : WindowState.Normal,
+                    API = api,
+                };
+                _window = Silk.NET.Windowing.Window.Create(options);
+                FrameClock.VSync = ConfigManager.View.VSync;
+                _window.Load += OnLoad;
+                _window.Render += OnRender;
+                _window.Closing += OnClosing;
+                _window.Initialize();
+                Console.WriteLine($"[Host] gl context {api.Version.MajorVersion}.{api.Version.MinorVersion} {api.Profile}");
+                return;
+            }
+            catch (Exception e)
+            {
+                Console.Error.WriteLine($"[Host] context {api.Version.MajorVersion}.{api.Version.MinorVersion} unavailable: {e.Message}");
+                _window = null;
+            }
         }
-        catch (Exception e)
-        {
-            Console.Error.WriteLine($"[Host] window unavailable {e.Message}");
-            _headless = true;
-        }
+
+        Console.Error.WriteLine("[Host] no usable gl context were found");
+        _headless = true;
     }
 
     public static string Title
@@ -330,13 +353,12 @@ public static class HostWindow
         _vramTex= CreateTexture(_gl);
         _ramTex = CreateTexture(_gl);
 
-        Hle.GlVram.Scale = ConfigManager.View.NativeResolution ? 1 : 4;
+        Hle.GlVram.Scale = ConfigManager.View.RenderScale;
         _glBackend = (Hle.GlCore)Hle.GpuBackendFactory.Create(_gl,
             Hle.GpuBackendFactory.Parse(ConfigManager.View.GpuBackend));
         _glBackend.InitGl();
         Hle.GpuHle.Active = _glBackend.Ready;
         Hle.GpuHle.Backend = _glBackend;
-        Hle.GpuHle.NativeResolution = ConfigManager.View.NativeResolution;
 
         _imgui = new ImGuiController(_gl, _window, input, null, ConfigureImGui);
 
@@ -397,6 +419,8 @@ public static class HostWindow
     public static void SetVSync(bool on)
     {
         if (_window != null) _window.VSync = on;
+        FrameClock.VSync = on;
+        FrameClock.Resync();
     }
 
     static void OnRender(double dt)
