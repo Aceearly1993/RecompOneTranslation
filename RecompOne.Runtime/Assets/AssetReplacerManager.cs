@@ -39,6 +39,25 @@ public sealed class TextureAsset
     public bool AspectChecked;
 }
 
+public sealed class TextureRule
+{
+    public int[] Texpages = [];
+    public int Bpp;
+    public int MinWidth, MinHeight;
+    public int MaxWidth = int.MaxValue, MaxHeight = int.MaxValue;
+    public TextureAsset Asset = null!;
+
+    public bool Matches(int tpage, int bpp, int w, int h)
+    {
+        if (Bpp != 0 && Bpp != bpp) return false;
+        if (w < MinWidth || h < MinHeight || w > MaxWidth || h > MaxHeight) return false;
+        if (Texpages.Length == 0) return true;
+        foreach (int tp in Texpages)
+            if (tp == tpage) return true;
+        return false;
+    }
+}
+
 public sealed class ClutAsset
 {
     public ulong ClutHash;
@@ -71,6 +90,7 @@ public sealed class AssetReplacerManager
     readonly Dictionary<ulong, TextureAsset> _texExact = [];
     readonly Dictionary<ulong, TextureAsset> _texAny = [];
     readonly Dictionary<ulong, ClutAsset> _cluts = [];
+    readonly List<TextureRule> _rules = [];
 
     string _gameId = "UNKNOWN";
     bool _gameIdResolved;
@@ -183,7 +203,7 @@ public sealed class AssetReplacerManager
         }
 
         Console.WriteLine($"[assets] game={_gameId} packs={found.Count} xa={_xa.Count} " +
-                          $"tex={_texExact.Count + _texAny.Count} cluts={_cluts.Count} root={root}");
+                          $"tex={_texExact.Count + _texAny.Count} cluts={_cluts.Count} rules={_rules.Count} root={root}");
     }
 
     public void Reload()
@@ -195,6 +215,7 @@ public sealed class AssetReplacerManager
             _texExact.Clear();
             _texAny.Clear();
             _cluts.Clear();
+            _rules.Clear();
         }
         Textures.TextureResolver.Invalidate();
         Xa.XaRouter.Reset();
@@ -298,6 +319,29 @@ public sealed class AssetReplacerManager
                 AddTexture(pack, dto.File!, index, clutHash, mode);
             }
 
+        if (pack.Manifest.TextureRules != null)
+            foreach (var dto in pack.Manifest.TextureRules)
+            {
+                if (string.IsNullOrWhiteSpace(dto.File)) continue;
+                string file = dto.File!;
+                _rules.Add(new TextureRule
+                {
+                    Texpages = dto.Texpages?.ToArray() ?? [],
+                    Bpp = dto.Bpp ?? 0,
+                    MinWidth = dto.MinWidth ?? 0,
+                    MinHeight = dto.MinHeight ?? 0,
+                    MaxWidth = dto.MaxWidth ?? int.MaxValue,
+                    MaxHeight = dto.MaxHeight ?? int.MaxValue,
+                    Asset = new TextureAsset
+                    {
+                        Mode = TextureMode.Rgba,
+                        FileName = file,
+                        PackId = pack.Id,
+                        Open = () => pack.ReadAsset(file),
+                    },
+                });
+            }
+
         if (pack.Manifest.Cluts != null)
             foreach (var dto in pack.Manifest.Cluts)
             {
@@ -338,7 +382,23 @@ public sealed class AssetReplacerManager
 
     public bool HasTextures
     {
-        get { lock (_gate) return _texExact.Count > 0 || _texAny.Count > 0 || _cluts.Count > 0; }
+        get { lock (_gate) return _texExact.Count > 0 || _texAny.Count > 0 || _cluts.Count > 0 || _rules.Count > 0; }
+    }
+
+    public bool HasRules
+    {
+        get { lock (_gate) return _rules.Count > 0; }
+    }
+
+    public TextureAsset? MatchRule(int tpage, int bpp, int w, int h)
+    {
+        if (!Enabled) return null;
+        lock (_gate)
+        {
+            foreach (var rule in _rules)
+                if (rule.Matches(tpage, bpp, w, h)) return rule.Asset;
+            return null;
+        }
     }
 
     public TextureAsset? ResolveTexture(ulong indexHash, ulong clutHash)

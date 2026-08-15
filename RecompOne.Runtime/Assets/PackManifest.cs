@@ -16,6 +16,19 @@ public sealed class PackManifest
     public XaOptionsDto? XaOptions { get; set; }
     public List<TextureEntryDto>? Textures { get; set; }
     public List<ClutEntryDto>? Cluts { get; set; }
+    public List<TextureRuleDto>? TextureRules { get; set; }
+}
+
+public sealed class TextureRuleDto
+{
+    public List<int>? Texpages { get; set; }
+    public int? Bpp { get; set; }
+    public int? MinWidth { get; set; }
+    public int? MinHeight { get; set; }
+    public int? MaxWidth { get; set; }
+    public int? MaxHeight { get; set; }
+    public string? File { get; set; }
+    public string? Note { get; set; }
 }
 
 public sealed class TextureEntryDto

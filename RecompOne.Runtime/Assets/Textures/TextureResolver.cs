@@ -176,6 +176,20 @@ public static class TextureResolver
         }
 
         var rect = TextureTile.Describe(tpage, clut, u0, v0, w, h);
+
+        if (mgr.HasRules && mgr.MatchRule(tpage, rect.Bpp, w, h) is { } ruled)
+        {
+            var ruledTex = mgr.LoadTexture(ruled);
+            if (ruledTex != null)
+            {
+                result.Rect = rect;
+                result.Texture = ruledTex;
+                result.Clut = null;
+                result.Hit = true;
+                return true;
+            }
+        }
+
         bool dirty = VramTracker.IsGpuDirty(rect.VramX, rect.VramY, rect.VramW, rect.H);
         if (dirty)
         {
