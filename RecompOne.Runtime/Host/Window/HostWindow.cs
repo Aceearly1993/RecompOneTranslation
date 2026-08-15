@@ -406,7 +406,7 @@ public static class HostWindow
         io.FontGlobalScale = Config.ConfigManager.View.UiScale;
         unsafe { io.NativePtr->IniFilename = null; }
 
-        Icons.Load(13f * _dpiScale);
+        FontSet.Load(16f * _dpiScale);
         Localization.Load();
         Theme.Load();
 
