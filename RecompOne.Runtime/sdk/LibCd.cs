@@ -87,15 +87,23 @@ public static class LibCd
     public static void CdControlB(CpuContext c, IMemory m)
     {
         if (CommandWait(m, (byte)c.A0, c.A1, c.A2, 0) != 0) { c.V0 = 0; return; }
-        c.V0 = (uint)(SyncResult(m, c.A2) == Complete ? 1 : 0);
+        uint result = c.A2;
+        PumpReady(1);
+        c.V0 = (uint)(SyncResult(m, result) == Complete ? 1 : 0);
     }
 
     public static void CdSync(CpuContext c, IMemory m)
- => c.V0 = (uint)SyncResult(m, c.A1);
+    {
+        uint result = c.A1;
+        PumpReady(1);
+        c.V0 = (uint)SyncResult(m, result);
+    }
 
     public static void CdReady(CpuContext c, IMemory m)
     {
-        if (c.A1 != 0) WriteResult(m, c.A1);
+        uint result = c.A1;
+        PumpReady(1);
+        if (result != 0) WriteResult(m, result);
         c.V0 = (uint)_lastIntr;
     }
 
@@ -131,27 +139,70 @@ public static class LibCd
     internal static int CurrentLba { get { lock (_posGate) return PosToInt(_pos); } }
     internal static double SectorsPerSecond => (_mode & 0x80) != 0 ? 150.0 : 75.0; //cd pacer
 
+    const int MaxSectorsPerTick = 400000;
+
     internal static void Tick()
     {
         bool xaMode = (_mode & 0x40) != 0;
 
         if (_readActive && xaMode) return;
 
-        if (!_readActive || _cbData == 0) return;
+        if (!_readActive || (_cbData == 0 && _cbReady == 0)) return;
         var c = Runtime.Cpu;
         var m = Runtime.Mem;
         if (c == null || m == null) return;
 
         var snap = c.Snapshot();
-        while (_cbData != 0)
+        if (_cbData != 0)
         {
-            _lastIntr = DataReady;
-            if (_cbReady != 0) { c.A0 = DataReady; c.A1 = 0; Dispatcher.Call(c, m, _cbReady); }
-            AdvancePos(1);
-            Dispatcher.LoadByLba(CurrentLba);
-            if (_cbData != 0) { c.A0 = DataReady; c.A1 = 0; Dispatcher.Call(c, m, _cbData); }
+            while (_cbData != 0)
+            {
+                _lastIntr = DataReady;
+                if (_cbReady != 0) { c.A0 = DataReady; c.A1 = 0; Dispatcher.Call(c, m, _cbReady); }
+                AdvancePos(1);
+                Dispatcher.LoadByLba(CurrentLba);
+                if (_cbData != 0) { c.A0 = DataReady; c.A1 = 0; Dispatcher.Call(c, m, _cbData); }
+            }
+        }
+        else
+        {
+            c.Restore(snap);
+            PumpReady(MaxSectorsPerTick);
+            return;
         }
         c.Restore(snap);
+    }
+
+    static bool _pumping;
+    
+    
+    
+    static void PumpReady(int maxSectors)
+    {
+        if (_pumping || !_readActive || _cbReady == 0 || _cbData != 0) return;
+        var c = Runtime.Cpu;
+        var m = Runtime.Mem;
+        if (c == null || m == null) return;
+
+        _pumping = true;
+        var snap = c.Snapshot();
+        try
+        {
+            for (int i = 0; i < maxSectors && _readActive && _cbReady != 0; i++)
+            {
+                _lastIntr = DataReady;
+                c.A0 = DataReady;
+                c.A1 = 0;
+                Dispatcher.Call(c, m, _cbReady);
+                AdvancePos(1);
+                Dispatcher.LoadByLba(CurrentLba);
+            }
+        }
+        finally
+        {
+            c.Restore(snap);
+            _pumping = false;
+        }
     }
 
     static void EnsureXaThread()
@@ -272,7 +323,12 @@ public static class LibCd
     public static void CdReadCallback(CpuContext c, IMemory m) { c.V0 = _cbData; _cbData = c.A0; }
     public static void CdDataCallback(CpuContext c, IMemory m) { c.V0 = _cbData; _cbData = c.A0; }
 
-    public static void CdStatus(CpuContext c, IMemory m) => c.V0 = _status;
+    public static void CdStatus(CpuContext c, IMemory m)
+    {
+        PumpReady(1);
+        c.V0 = _status;
+    }
+
     public static void CdMode(CpuContext c, IMemory m) => c.V0 = _mode;
     public static void CdLastCom(CpuContext c, IMemory m) => c.V0 = _com;
 

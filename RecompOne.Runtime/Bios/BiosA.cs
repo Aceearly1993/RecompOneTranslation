@@ -180,6 +180,12 @@ public static class BiosA
             case 0x03:
             {
                 uint fd = c.A0;
+                if (fd <= 2u && !_cardFiles.ContainsKey(fd))
+                {
+                    var w = fd == 2u ? Console.Error : Console.Out;
+                    for (uint i = 0; i < c.A2; i++) w.Write((char)m.ReadU8(c.A1 + i));
+                    c.V0 = c.A2; LastErrno = 0; break;
+                }
                 if (_cardFiles.TryGetValue(fd, out var cwe))
                 {
                     int n = (int)Math.Min(c.A2, (uint)(cwe.size - cwe.pos));
