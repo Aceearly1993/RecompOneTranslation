@@ -482,7 +482,7 @@
             "pt-BR": "{1} linhas no contexto atual, {3} após a escala ({4}x)",
             "es-419": "{1} líneas en el contexto actual, {3} tras la escala ({4}x)",
             "ja-jp": "現在のコンテキストでは{1}ライン、スケール後は{3}ライン（{4}x)",
-            "cn-zh": "{1} 当前状态下的显示效果, {3} 缩放后 ({4}x)"
+            "cn-zh": "当前状态下为 {1} 行数, 缩放后为 {3} 行数 ({4}x)"
         },
         "settings.display.restart_pending": {
             "en": "restart is required",
