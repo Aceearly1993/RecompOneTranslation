@@ -14,6 +14,10 @@ public sealed partial class Gpu
 
     private int _drawAreaLeft, _drawAreaTop, _drawAreaRight = VramWidth - 1, _drawAreaBottom = VramHeight - 1;
     private int _drawOffsetX, _drawOffsetY;
+    
+    public int DrawOffsetX => _drawOffsetX;
+    
+    public int DrawOffsetY => _drawOffsetY;
 
     private int _texPageX, _texPageY;
     private int _texDepth;

@@ -17,6 +17,10 @@ internal static class FrameClock
     public static double Fps { get; private set; }
     private static double _fpsAccumMs;
     private static int _fpsFrames;
+
+    public static double PresentFps { get; private set; }
+    private static double _presentStartMs;
+    private static int _presentFrames;
     public static double LastWaitMs { get; private set; }
 
     private static double _lastStart;
@@ -35,6 +39,7 @@ internal static class FrameClock
             Fps = _fpsFrames * 1000.0 / _fpsAccumMs;
             _fpsAccumMs = 0;
             _fpsFrames = 0;
+
         }
 
         _nextFrameMs += FrameMs;
@@ -70,6 +75,21 @@ internal static class FrameClock
             Thread.SpinWait(48);
 
         LastWaitMs = wait;
+    }
+
+    public static void MarkPresent()
+    {
+        var now = _clock.Elapsed.TotalMilliseconds;
+        _presentFrames++;
+
+
+
+        var elapsed = now - _presentStartMs;
+        if (elapsed < 1000.0) return;
+
+        PresentFps = _presentFrames * 1000.0 / elapsed;
+        _presentStartMs = now;
+        _presentFrames = 0;
     }
 
     public static void Resync()

@@ -73,7 +73,7 @@ public static class MainMenuBar
     {
         if (!ConfigManager.View.ShowFps) return;
 
-        var text = $"{FrameClock.Fps:F1} fps";
+        var text = $"{FrameClock.PresentFps:F0} / {FrameClock.Fps:F0} fps";
         var width = ImGuiNET.ImGui.CalcTextSize(text).X;
         ImGuiNET.ImGui.SameLine(ImGuiNET.ImGui.GetWindowWidth() - width -
                                 ImGuiNET.ImGui.GetStyle().FramePadding.X * 2f);

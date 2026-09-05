@@ -64,7 +64,45 @@ internal sealed class DisplaySettingsSection : ISettingsSection
         ImGui.TextDisabled(Localization.T("settings.display.backend_running", Hle.GpuBackendFactory.Selected));
 
         ImGui.Separator();
+        DrawFrameRate();
+
+        ImGui.Separator();
         DrawPgxp();
+    }
+
+    static void DrawFrameRate()
+    {
+        ImGui.TextUnformatted(Localization.T("settings.display.frame_rate"));
+
+        var available = Interp.Interp.Available;
+        if (!available) ImGui.BeginDisabled();
+
+        var steps = Interp.Interp.Steps;
+        var fps = ConfigManager.View.GetInt(Interp.Interp.KeyFps, Interp.Interp.Native);
+        var index = Math.Max(Array.IndexOf(steps, fps), 0);
+
+        if (ImGui.SliderInt("##frame-rate", ref index, 0, steps.Length - 1, StepLabel(steps[index])))
+        {
+            ConfigManager.View.SetInt(Interp.Interp.KeyFps, steps[Math.Clamp(index, 0, steps.Length - 1)]);
+            ConfigManager.SaveView(PanelManager.Panels);
+            Interp.Interp.Load();
+            HostWindow.RefreshVSync();
+        }
+
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(Localization.T("settings.display.frame_rate_hint"));
+
+        if (!available) ImGui.EndDisabled();
+
+        if (!available)
+            ImGui.TextDisabled(Localization.T("settings.display.frame_rate_needs_pgxp"));
+    }
+
+    static string StepLabel(int fps)
+    {
+        if (fps == Interp.Interp.Native) return Localization.T("settings.display.frame_rate_native");
+
+        var effective = Interp.Interp.Resolve(fps, Interp.Interp.RefreshRate, Interp.Interp.VSync);
+        return effective > 0 && effective != fps ? $"{fps} FPS ({effective})" : $"{fps} FPS";
     }
 
     static void DrawPgxp()

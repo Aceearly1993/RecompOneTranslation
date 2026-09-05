@@ -660,6 +660,26 @@
       "zh-CN": "使用中: {0}",
       "fr-FR": "Actuellement: {0}"
     },
+    "settings.display.frame_rate": {
+      "en": "Frame rate",
+      "pt-BR": "Taxa de quadros",
+      "es-419": "Tasa de cuadros"
+    },
+    "settings.display.frame_rate_native": {
+      "en": "Same as the game",
+      "pt-BR": "Igual ao jogo",
+      "es-419": "Igual al juego"
+    },
+    "settings.display.frame_rate_hint": {
+      "en": "Display rate. above the game own frames are interpolated.",
+      "pt-BR": "Taxa de exibição. acima da do jogo os quadros são interpolados.",
+      "es-419": "Tasa de pantalla. encima de la del juego los cuadros se interpolan."
+    },
+    "settings.display.frame_rate_needs_pgxp": {
+      "en": "Needs PGXP memory tracking.",
+      "pt-BR": "Precisa do rastreio de memória do PGXP.",
+      "es-419": "Necesita el rastreo de memoria de PGXP."
+    },
     "settings.display.pgxp": {
       "en": "Geometry precision (PGXP)",
       "pt-BR": "Precisão de geometria (PGXP)",
@@ -711,9 +731,9 @@
       "es-419": "Rastreo de memoria"
     },
     "settings.display.pgxp_memory_hint": {
-      "en": "Tracks vertices the game stores in RAM.",
-      "pt-BR": "Rastreia vértices que o jogo guarda na RAM.",
-      "es-419": "Rastrea vértices que el juego guarda en la RAM."
+      "en": "Tracks vertices stored in RAM.",
+      "pt-BR": "Rastreia vértices guardados na RAM.",
+      "es-419": "Rastrea vértices guardados en la RAM."
     },
     "settings.display.pgxp_cache_w": {
       "en": "Cache depth",

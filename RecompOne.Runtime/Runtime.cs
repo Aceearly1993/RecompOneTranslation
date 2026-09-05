@@ -81,7 +81,7 @@ public static class Runtime
         {
             _hostReady = true;
             Diagnostics.ConsoleMirror.Install();
-            HostWindow.Initialize(title);
+            Host.GpuJobs.Run(() => HostWindow.Initialize(title));
             Audio.Initialize();
         }
 
@@ -157,23 +157,6 @@ public static class Runtime
         _hardResetPending = true;
     }
 
-    public static void Run(Action boot)
-    {
-        Pgxp.PgxpGpu.Init();
-        
-        while (true)
-            try
-            {
-                boot();
-                return;
-            }
-            catch (HardResetSignal)
-            {
-                Console.WriteLine("[Runtime] hard reset, game restarting");
-                ResetForBoot();
-            }
-    }
-
     private static void ResetForBoot()
     {
         Audio.Detach();
@@ -199,6 +182,109 @@ public static class Runtime
         }
     }
 
+    private static volatile bool _emulationDone;
+    private static readonly System.Diagnostics.Stopwatch _presentWatch = System.Diagnostics.Stopwatch.StartNew();
+    private static double _nextPresentMs;
+    
+    public static void Run(Action boot)
+    {
+        Pgxp.PgxpGpu.Init();
+        Host.GpuJobs.Claim();
+        
+        var thread = new Thread(() => Emulate(boot))
+        {
+            IsBackground = true,
+            Name = "emulation"
+        };
+        
+        thread.Start();
+        
+        while (!_emulationDone)
+            PresentLoop();
+    }
+    
+    private static void Emulate(Action boot)
+    {
+        while (true)
+            try
+            {
+                boot();
+                break;
+            }
+            catch (HardResetSignal)
+            {
+                Console.WriteLine("[Runtime] hard reset, game restarting");
+                ResetForBoot();
+            }
+            catch (Exception e)
+            {
+                Console.Error.WriteLine($"[Runtime] emulation stopped: {e}");
+                break;
+            }
+        
+        _emulationDone = true;
+    }
+    
+    private static void PresentLoop()
+    {
+        Host.GpuJobs.Drain();
+        
+        if (!HostWindow.Ready)
+        {
+            Thread.Sleep(1);
+            return;
+        }
+        
+        HostWindow.PumpEvents();
+        
+        var interp = Interp.Interp.Backend;
+        
+        if (interp == null || !interp.Acquire())
+        {
+            Thread.Sleep(1);
+            return;
+        }
+        
+        HostWindow.AdvanceFrame();
+        
+        var frames = interp.BeginPresent();
+        var pace = interp.PaceMs;
+        
+        for (var i = 0; i < frames; i++)
+        {
+            if (!interp.Affordable(i)) break;
+            
+            interp.Compose(i);
+            Pace(pace);
+            HostWindow.Compose(Gpu);
+            Host.GpuJobs.Drain();
+        }
+        
+        if (frames == 0) interp.Compose(0);
+        
+        interp.EndPresent();
+    }
+    
+    //the display frames only read as smooth if they land evenly in time, so the
+    //schedule is held against the clock instead of leaving it to the swap
+    private static void Pace(double intervalMs)
+    {
+        var now = _presentWatch.Elapsed.TotalMilliseconds;
+        
+        if (intervalMs <= 0.0 || _nextPresentMs <= 0.0 || now - _nextPresentMs > 250.0)
+        {
+            _nextPresentMs = now + intervalMs;
+            return;
+        }
+        
+        var wait = _nextPresentMs - now;
+        
+        if (wait > 1.5) Thread.Sleep((int)(wait - 1.0));
+        while (_presentWatch.Elapsed.TotalMilliseconds < _nextPresentMs) Thread.SpinWait(32);
+        
+        _nextPresentMs += intervalMs;
+    }
+    
     public static void PresentFrame()
     {
         if (_hardResetPending)
@@ -207,7 +293,8 @@ public static class Runtime
             throw new HardResetSignal();
         }
 
-        HostWindow.Present(Gpu);
+        Interp.Interp.Backend?.Publish();
+        
         Audio.Attach(Spu);
         FrameClock.Throttle();
         Sdk.LibCd.Tick();

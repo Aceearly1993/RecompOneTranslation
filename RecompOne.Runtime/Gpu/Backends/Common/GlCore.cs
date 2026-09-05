@@ -23,6 +23,12 @@ public sealed class GlCore : IGpuBackend
     private readonly GlDisplayRt?[] _rts = new GlDisplayRt?[2];
     private long _rtStamp;
     private long _frame;
+    
+    public void AdvanceFrame()
+    {
+        _frame++;
+    }
+
 
     private uint _vao, _vbo, _presentVao, _presentVbo, _progPrim, _progPresent, _progPresent24;
     private uint _presentFbo, _presentTex;
@@ -979,7 +985,6 @@ public sealed class GlCore : IGpuBackend
     {
         if (!Ready || w <= 0 || h <= 0) return (0, 0, 0, GpuHle.OutputAspect);
 
-        _frame++;
         Flush();
 
         for (var i = 0; i < _rts.Length; i++)

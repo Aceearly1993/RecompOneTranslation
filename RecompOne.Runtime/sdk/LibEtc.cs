@@ -30,6 +30,7 @@ public static class LibEtc
             return;
         }
 
+        Interp.VideoRate.Push(mode == 0 ? 1 : mode);
         Runtime.PresentFrame();
         WaitVBlanks(c, m, mode == 0 ? 1 : mode);
         var elapsed = Elapsed();

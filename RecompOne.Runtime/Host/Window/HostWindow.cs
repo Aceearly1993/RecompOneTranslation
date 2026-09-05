@@ -111,6 +111,7 @@ public static class HostWindow
     {
         ConfigManager.Load();
         Pgxp.Pgxp.Load();
+        Interp.Interp.Load();
 
         foreach (var api in ApiChain())
             try
@@ -127,12 +128,14 @@ public static class HostWindow
                 };
                 _window = Silk.NET.Windowing.Window.Create(options);
                 FrameClock.VSync = ConfigManager.View.VSync;
+                Interp.Interp.VSync = ConfigManager.View.VSync;
+                Interp.Interp.RefreshRate = QueryRefreshRate();
+                Console.WriteLine($"[Host] monitor refresh: {Interp.Interp.RefreshRate} hz");
                 _window.Load += OnLoad;
                 _window.Render += OnRender;
                 _window.Closing += OnClosing;
                 _window.Initialize();
-                Console.WriteLine(
-                    $"[Host] gl context {api.Version.MajorVersion}.{api.Version.MinorVersion} {api.Profile}");
+                Console.WriteLine($"[Host] gl context {api.Version.MajorVersion}.{api.Version.MinorVersion} {api.Profile}");
                 return;
             }
             catch (Exception e)
@@ -305,8 +308,55 @@ public static class HostWindow
         }
 
         _window.DoRender();
+        FrameClock.MarkPresent();
     }
 
+    public static bool Ready => !_headless && _window != null;
+    
+    public static void PumpEvents()
+    {
+        if (_headless || _window == null) return;
+        
+        try
+        {
+            _window.DoEvents();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
+        
+        if (_window.IsClosing)
+        {
+            Runtime.Shutdown();
+            Environment.Exit(0);
+        }
+        
+        InputManager.Poll();
+        
+        if (InputManager.ConsumeTopBarToggle())
+        {
+            ConfigManager.View.HideTopBar = !ConfigManager.View.HideTopBar;
+            ConfigManager.SaveView(PanelManager.Panels);
+        }
+        
+        if (InputManager.ConsumeFullscreenToggle())
+        {
+            ConfigManager.View.Fullscreen = !ConfigManager.View.Fullscreen;
+            SetFullscreen(ConfigManager.View.Fullscreen);
+            ConfigManager.SaveView(PanelManager.Panels);
+        }
+    }
+    
+    public static void Compose(Gpu? gpu)
+    {
+        _gpu = gpu;
+        if (_headless || _window == null) return;
+        
+        _window.DoRender();
+        FrameClock.MarkPresent();
+    }
+    
     internal static void Pump()
     {
         if (_headless || _window == null) return;
@@ -438,7 +488,8 @@ public static class HostWindow
             Hle.GpuBackendFactory.Parse(ConfigManager.View.GpuBackend));
         _glBackend.InitGl();
         Hle.GpuHle.Active = _glBackend.Ready;
-        Hle.GpuHle.Backend = _glBackend;
+        Hle.GpuHle.Backend = new Interp.InterpBackend(_glBackend);
+        ApplySwapInterval();
 
         _imgui = new ImGuiController(_gl, _window, input, null, ConfigureImGui);
 
@@ -503,7 +554,71 @@ public static class HostWindow
     {
         if (_window != null) _window.VSync = on;
         FrameClock.VSync = on;
+        Interp.Interp.VSync = on;
+        ApplySwapInterval();
         FrameClock.Resync();
+    }
+    
+    public static void AdvanceFrame()
+    {
+        _glBackend?.AdvanceFrame();
+    }
+    
+    public static void RefreshVSync()
+    {
+        ApplySwapInterval();
+    }
+    
+    private static void ApplySwapInterval()
+    {
+        if (_headless || _window == null) return;
+        
+        var refresh = QueryRefreshRate();
+        if (refresh > 0 && refresh != Interp.Interp.RefreshRate)
+        {
+            Interp.Interp.RefreshRate = refresh;
+            Console.WriteLine($"[Host] monitor refresh: {refresh} hz");
+        }
+        
+        var interval = Interp.Interp.VSync ? -1 : 0;
+        if (!SetSwapInterval(interval)) interval = SetSwapInterval(1) ? 1 : 0;
+        
+        Console.WriteLine($"[Host] swap interval: {interval}" +
+                          (interval == -1 ? " (adaptive)" : ""));
+    }
+    
+    private static bool SetSwapInterval(int interval)
+    {
+        try
+        {
+            Silk.NET.GLFW.Glfw.GetApi().SwapInterval(interval);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
+    private static unsafe int QueryRefreshRate()
+    {
+        try
+        {
+            var glfw = Silk.NET.GLFW.Glfw.GetApi();
+            var monitor = glfw.GetPrimaryMonitor();
+            if (monitor == null) return 0;
+            
+            var mode = glfw.GetVideoMode(monitor);
+            if (mode == null) return 0;
+            
+            var rate = mode->RefreshRate;
+            return rate is > 0 and <= 1000 ? rate : 0;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"[Host] cant read refresh rate: {e.Message}");
+            return 0;
+        }
     }
 
     private static void OnRender(double dt)
