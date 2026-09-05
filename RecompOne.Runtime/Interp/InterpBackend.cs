@@ -28,6 +28,8 @@ public sealed class InterpBackend : IGpuBackend
     private FrameGraph _previous = new();
     
     private bool _active;
+    private uint _lastAddress;
+    private int _addressSub;
     private bool _interpolating;
     private int _frames = 1;
     
@@ -66,6 +68,11 @@ public sealed class InterpBackend : IGpuBackend
         var offsetX = (float)(Runtime.Gpu?.DrawOffsetX ?? 0);
         var offsetY = (float)(Runtime.Gpu?.DrawOffsetY ?? 0);
         
+        var address = Runtime.Gpu?.FifoBase ?? 0u;
+        if (address != 0u && address == _lastAddress) _addressSub++;
+        else _addressSub = 0;
+        _lastAddress = address;
+        
         _recording.Tris.Add(new TriRecord
         {
             A = Detach(in a, offsetX, offsetY),
@@ -73,6 +80,8 @@ public sealed class InterpBackend : IGpuBackend
             C = Detach(in c, offsetX, offsetY),
             Flags = f,
             Key = FrameMatcher.KeyOf(in a, in b, in c, in f),
+            Address = address,
+            Sub = _addressSub,
             Match = -1,
             OffsetX = offsetX,
             OffsetY = offsetY
@@ -169,6 +178,9 @@ public sealed class InterpBackend : IGpuBackend
     
     public void Publish()
     {
+        _lastAddress = 0u;
+        _addressSub = 0;
+
         if (!_active) return;
         
         lock (_gate)

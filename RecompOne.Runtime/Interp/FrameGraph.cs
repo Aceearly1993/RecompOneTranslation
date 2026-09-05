@@ -20,6 +20,8 @@ internal struct TriRecord
     public HleVertex C;
     public PrimFlags Flags;
     public ulong Key;
+    public uint Address;
+    public int Sub;
     public int Match;
     public float OffsetX;
     public float OffsetY;

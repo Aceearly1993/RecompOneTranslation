@@ -7,12 +7,20 @@ internal sealed class FrameMatcher
     private const ulong HashSeed = 0xCBF29CE484222325ul;
     private const ulong HashPrime = 0x100000001B3ul;
     
+    private const int Shared = -1;
+    
     private const float Certain = 4f;
     private const float Separation = 4f;
     
     private readonly Dictionary<ulong, List<int>> _buckets = new();
     private readonly List<List<int>> _pool = [];
+    private readonly Dictionary<ulong, int> _addresses = new();
+    private readonly Dictionary<ulong, int> _repeats = new();
+    private readonly Dictionary<long, int> _deltas = new();
     private bool[] _used = [];
+    private long _bank;
+
+    public int ByAddress { get; private set; }
     
     public int Matched { get; private set; }
     
@@ -40,16 +48,31 @@ internal sealed class FrameMatcher
         Release();
         
         Matched = 0;
+        ByAddress = 0;
         Total = current.Tris.Count;
         
         if (_used.Length < previous.Tris.Count) _used = new bool[previous.Tris.Count];
         Array.Clear(_used, 0, previous.Tris.Count);
         
+        _addresses.Clear();
         for (var i = 0; i < previous.Tris.Count; i++)
         {
             var key = previous.Tris[i].Key;
             if (!_buckets.TryGetValue(key, out var bucket)) _buckets[key] = bucket = Rent();
             bucket.Add(i);
+            
+            var slot = Slot(previous.Tris[i]);
+            if (slot == 0ul) continue;
+            if (!_addresses.TryAdd(slot, i)) _addresses[slot] = Shared;
+        }
+        
+        _repeats.Clear();
+        for (var i = 0; i < current.Tris.Count; i++)
+        {
+            var slot = Slot(current.Tris[i]);
+            if (slot == 0ul) continue;
+            _repeats.TryGetValue(slot, out var seen);
+            _repeats[slot] = seen + 1;
         }
         
         var limit = radius * radius;
@@ -57,7 +80,17 @@ internal sealed class FrameMatcher
         for (var i = 0; i < current.Tris.Count; i++)
         {
             var tri = current.Tris[i];
-            tri.Match = Nearest(previous, in tri, limit);
+            tri.Match = Located(previous, in tri, limit);
+            
+            if (tri.Match >= 0)
+            {
+                ByAddress++;
+            }
+            else
+            {
+                tri.Match = Nearest(previous, in tri, limit);
+                if (tri.Match >= 0) Learn(in tri, previous.Tris[tri.Match]);
+            }
             
             if (tri.Match >= 0)
             {
@@ -67,6 +100,66 @@ internal sealed class FrameMatcher
             
             current.Tris[i] = tri;
         }
+        
+        Settle();
+    }
+
+    private int Located(FrameGraph previous, in TriRecord tri, float limit)
+    {
+        if (tri.Address == 0u) return -1;
+        if (_repeats.TryGetValue(Slot(tri), out var seen) && seen > 1) return -1;
+        
+        var index = Lookup(tri.Address, tri.Sub);
+        if (index < 0 && _bank != 0L) index = Lookup((uint)(tri.Address - _bank), tri.Sub);
+        if (index < 0) return -1;
+        
+        var found = previous.Tris[index];
+        if (found.Key != tri.Key) return -1;
+        
+        return Distance(found, in tri) <= limit ? index : -1;
+    }
+    
+    private int Lookup(uint address, int sub)
+    {
+        if (!_addresses.TryGetValue(Slot(address, sub), out var index)) return -1;
+        if (index == Shared) return -1;
+        return _used[index] ? -1 : index;
+    }
+    
+    private void Learn(in TriRecord current, in TriRecord previous)
+    {
+        if (current.Address == 0u || previous.Address == 0u || current.Sub != previous.Sub) return;
+        
+        var delta = (long)current.Address - previous.Address;
+        _deltas.TryGetValue(delta, out var count);
+        _deltas[delta] = count + 1;
+    }
+    
+    private void Settle()
+    {
+        if (_deltas.Count == 0) return;
+        
+        var best = 0L;
+        var most = 0;
+        foreach (var (delta, count) in _deltas)
+            if (count > most)
+            {
+                most = count;
+                best = delta;
+            }
+        
+        if (most * 4 >= Total) _bank = best;
+        _deltas.Clear();
+    }
+    
+    private static ulong Slot(in TriRecord tri)
+    {
+        return Slot(tri.Address, tri.Sub);
+    }
+    
+    private static ulong Slot(uint address, int sub)
+    {
+        return address == 0u ? 0ul : ((ulong)address << 8) | (uint)(sub & 0xFF);
     }
     
     private int Nearest(FrameGraph previous, in TriRecord tri, float limit)
