@@ -27,23 +27,15 @@ public sealed partial class Gpu
         var x = v.Precise ? v.Px : v.X;
         var y = v.Precise ? v.Py : v.Y;
 
-        if (invalidW && v.Precise)
-        {
-            var tol = Pgxp.Pgxp.Tolerance;
-            if (tol >= 0f && (Math.Abs(x - v.X) > tol || Math.Abs(y - v.Y) > tol))
-            {
-                x = v.X;
-                y = v.Y;
-            }
-        }
-
         return new HleVertex
         {
             X = x,
             Y = y,
             Z = invalidW ? 1f : v.Pw,
             HasGteZ = !invalidW,
-            R = (byte)v.R, G = (byte)v.G, B = (byte)v.B, U = (short)v.U, V = (short)v.V
+            Depth = v.Transform != 0 ? v.Pw : 0f,
+            R = (byte)v.R, G = (byte)v.G, B = (byte)v.B, U = (short)v.U, V = (short)v.V,
+            Transform = v.Transform
         };
     }
 

@@ -50,6 +50,18 @@ public static class Runtime
 
     public static Config.ViewConfig View => Config.ConfigManager.View;
 
+    private static readonly List<Action<Config.ViewConfig>> _defaults = [];
+
+    public static void Defaults(Action<Config.ViewConfig> apply)
+    {
+        _defaults.Add(apply);
+    }
+
+    internal static void ApplyDefaults()
+    {
+        foreach (var apply in _defaults) apply(Config.ConfigManager.View);
+    }
+
     public static void SaveView()
     {
         Config.ConfigManager.SaveView(Host.Window.PanelManager.Panels);

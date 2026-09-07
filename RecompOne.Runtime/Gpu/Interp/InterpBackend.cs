@@ -5,8 +5,6 @@ namespace RecompOne.Runtime.Interp;
 
 public sealed class InterpBackend : IGpuBackend
 {
-    private const float MaxDelta = 96f; //tbh this is mostly arbitrary, 96 seens to work fine enough for all cases, note to self: if something break look at this first
-    
     private readonly IGpuBackend _inner;
     private readonly InterpClock _clock = new();
     private readonly System.Diagnostics.Stopwatch _watch = System.Diagnostics.Stopwatch.StartNew();
@@ -16,8 +14,7 @@ public sealed class InterpBackend : IGpuBackend
     private double _renderedMs;
     private int _rendered;
     private int _source;
-    private readonly FrameMatcher _matcher = new();
-    private readonly VertexMap _map = new();
+    private readonly TransformInterp _transforms = new();
     
     private readonly Lock _gate = new();
     private readonly Stack<FrameGraph> _free = new();
@@ -27,9 +24,9 @@ public sealed class InterpBackend : IGpuBackend
     private FrameGraph _current = new();
     private FrameGraph _previous = new();
     
+    private readonly Dictionary<int, int> _groups = new();
+    
     private bool _active;
-    private uint _lastAddress;
-    private int _addressSub;
     private bool _interpolating;
     private int _frames = 1;
     
@@ -43,8 +40,6 @@ public sealed class InterpBackend : IGpuBackend
     public bool Ready => _inner.Ready;
     
     public int SourceRate => _source;
-    
-    public float MatchRate => _matcher.Rate;
     
     public void SetDrawEnv(in HleDrawEnv env)
     {
@@ -68,26 +63,53 @@ public sealed class InterpBackend : IGpuBackend
         var offsetX = (float)(Runtime.Gpu?.DrawOffsetX ?? 0);
         var offsetY = (float)(Runtime.Gpu?.DrawOffsetY ?? 0);
         
-        var address = Runtime.Gpu?.FifoBase ?? 0u;
-        if (address != 0u && address == _lastAddress) _addressSub++;
-        else _addressSub = 0;
-        _lastAddress = address;
-        
         _recording.Tris.Add(new TriRecord
         {
+            Transform = Group(in a, in b, in c),
             A = Detach(in a, offsetX, offsetY),
             B = Detach(in b, offsetX, offsetY),
             C = Detach(in c, offsetX, offsetY),
             Flags = f,
-            Key = FrameMatcher.KeyOf(in a, in b, in c, in f),
-            Address = address,
-            Sub = _addressSub,
-            Match = -1,
             OffsetX = offsetX,
             OffsetY = offsetY
         });
         
         _recording.Add(GraphOp.Tri, _recording.Tris.Count - 1);
+    }
+    
+    private int Group(in HleVertex a, in HleVertex b, in HleVertex c)
+    {
+        var serial = a.Transform > 0 ? a.Transform : b.Transform > 0 ? b.Transform : c.Transform;
+        if (serial <= 0) return 0;
+        
+        if (_groups.TryGetValue(serial, out var index))
+        {
+            var held = _recording.Transforms[index];
+            held.Tris++;
+            _recording.Transforms[index] = held;
+            return index + 1;
+        }
+        
+        Span<short> rotation = stackalloc short[9];
+        Span<int> translation = stackalloc int[3];
+        Span<int> view = stackalloc int[3];
+        if (!Gte.Snapshot(serial, rotation, translation, view)) return 0;
+        
+        index = _recording.Transforms.Count;
+        _recording.Transforms.Add(new TransformRecord
+        {
+            Serial = serial,
+            R0 = rotation[0], R1 = rotation[1], R2 = rotation[2],
+            R3 = rotation[3], R4 = rotation[4], R5 = rotation[5],
+            R6 = rotation[6], R7 = rotation[7], R8 = rotation[8],
+            TX = translation[0], TY = translation[1], TZ = translation[2],
+            H = view[0], OFX = view[1], OFY = view[2],
+            Tris = 1,
+            Match = -1
+        });
+        
+        _groups[serial] = index;
+        return index + 1;
     }
     
     public void DrawRect(in HleRect r, in PrimFlags f)
@@ -178,9 +200,6 @@ public sealed class InterpBackend : IGpuBackend
     
     public void Publish()
     {
-        _lastAddress = 0u;
-        _addressSub = 0;
-
         if (!_active) return;
         
         lock (_gate)
@@ -190,6 +209,7 @@ public sealed class InterpBackend : IGpuBackend
             _ready = _recording;
             _recording = _free.Count > 0 ? _free.Pop() : new FrameGraph();
             _recording.Clear();
+            _groups.Clear();
         }
     }
     
@@ -232,15 +252,23 @@ public sealed class InterpBackend : IGpuBackend
         _rendered = 0;
         _renderedMs = 0.0;
         
-        _interpolating = frames > 1 && _current.Interpolatable && _previous.Interpolatable && !_current.IsEmpty && _previous.Tris.Count > 0;
+        lock (_gate)
+        {
+            _interpolating = frames > 1 && _current.Interpolatable && _previous.Interpolatable &&
+                             !_current.IsEmpty && _previous.Tris.Count > 0;
+            
+            if (!_interpolating) return 1;
+            
+            _frames = frames;
+            Prepare();
+        }
         
-        if (!_interpolating) return 1;
-        
-        _matcher.Match(_current, _previous, MaxDelta);
-        _map.Build(_current, _previous);
-        _map.Resolve(_current);
-        _frames = frames;
         return frames;
+    }
+    
+    private void Prepare()
+    {
+        _transforms.Match(_current, _previous);
     }
     
     public void Compose(int index)
@@ -250,16 +278,17 @@ public sealed class InterpBackend : IGpuBackend
         var weight = _interpolating && index < _frames ? _clock.Weights(_frames)[index] : 1f;
         var start = _watch.Elapsed.TotalMilliseconds;
         
-        Replay(_current, _interpolating ? _previous : null, weight);
+        lock (_gate)
+        {
+            if (_interpolating && weight < 1f) _transforms.Build(_current, _previous, weight);
+            
+            Replay(_current, _interpolating ? _previous : null, weight);
+        }
         
         _renderedMs += _watch.Elapsed.TotalMilliseconds - start;
         _rendered++;
     }
     
-    /// <summary>
-    /// an extra copy is only worth drawing if it still fits the frame the game is
-    /// paying for, otherwise it is stealing the time the game needs to make the next one
-    /// </summary>
     public bool Affordable(int index)
     {
         if (!_active || !_interpolating || index == 0 || _budgetMs <= 0.0) return true;
@@ -288,11 +317,16 @@ public sealed class InterpBackend : IGpuBackend
     
     private void Settle()
     {
-        if (!_active || _current.IsEmpty) return;
+        if (!_active) return;
         
-        Replay(_current, null, 1f);
-        _current.Clear();
-        _current.Interpolatable = false;
+        lock (_gate)
+        {
+            if (_current.IsEmpty) return;
+            
+            Replay(_current, null, 1f);
+            _current.Clear();
+            _current.Interpolatable = false;
+        }
     }
     
     private void Replay(FrameGraph graph, FrameGraph? previous, float weight)
@@ -358,12 +392,18 @@ public sealed class InterpBackend : IGpuBackend
             return;
         }
         
-        var motion = graph.Motion[slot];
+        if (tri.Transform > 0)
+        {
+            if (_transforms.Warp(tri.Transform, in tri.A, out var wa) &&
+                _transforms.Warp(tri.Transform, in tri.B, out var wb) &&
+                _transforms.Warp(tri.Transform, in tri.C, out var wc))
+            {
+                Emit(in tri, in wa, in wb, in wc);
+                return;
+            }
+        }
         
-        Emit(in tri,
-            (motion.Moved & 1) != 0 ? VertexMap.Blend(in tri.A, motion.AX, motion.AY, motion.AZ, weight) : tri.A,
-            (motion.Moved & 2) != 0 ? VertexMap.Blend(in tri.B, motion.BX, motion.BY, motion.BZ, weight) : tri.B,
-            (motion.Moved & 4) != 0 ? VertexMap.Blend(in tri.C, motion.CX, motion.CY, motion.CZ, weight) : tri.C);
+        Emit(in tri, in tri.A, in tri.B, in tri.C);
     }
     
     private void Emit(in TriRecord tri, in HleVertex a, in HleVertex b, in HleVertex c)

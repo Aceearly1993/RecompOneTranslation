@@ -110,6 +110,7 @@ public static class HostWindow
     public static void Initialize(string title)
     {
         ConfigManager.Load();
+        Runtime.ApplyDefaults();
         Pgxp.Pgxp.Load();
         Interp.Interp.Load();
 

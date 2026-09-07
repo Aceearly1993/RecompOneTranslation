@@ -36,7 +36,7 @@ public static class Interp
         return vsync && refreshRate > 0 ? Math.Min(target, refreshRate) : target;
     }
     
-    public static int EffectiveTarget => Resolve(TargetFps, RefreshRate, VSync);
+    public static int EffectiveTarget => Available ? Resolve(TargetFps, RefreshRate, VSync) : Native;
     
     public static void Load()
     {

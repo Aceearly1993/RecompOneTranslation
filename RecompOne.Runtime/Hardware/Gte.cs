@@ -29,6 +29,51 @@ public static class Gte
     private static short ZSF3, ZSF4;
     private static uint FLAG;
 
+    private const int SnapshotSlots = 8192;
+    
+    private static readonly short[] _snapRt = new short[SnapshotSlots * 9];
+    private static readonly int[] _snapTr = new int[SnapshotSlots * 3];
+    private static readonly int[] _snapView = new int[SnapshotSlots * 3];
+    private static int _snapSerial;
+    private static bool _snapDirty = true;
+    
+    public static int TransformSerial
+    {
+        get
+        {
+            if (!_snapDirty) return _snapSerial;
+            
+            _snapSerial++;
+            _snapDirty = false;
+            
+            var slot = (_snapSerial & (SnapshotSlots - 1)) * 9;
+            for (var i = 0; i < 9; i++) _snapRt[slot + i] = RT[i];
+            
+            slot = (_snapSerial & (SnapshotSlots - 1)) * 3;
+            for (var i = 0; i < 3; i++) _snapTr[slot + i] = TR[i];
+            
+            _snapView[slot] = H;
+            _snapView[slot + 1] = OFX;
+            _snapView[slot + 2] = OFY;
+            
+            return _snapSerial;
+        }
+    }
+    
+    public static bool Snapshot(int serial, Span<short> rotation, Span<int> translation, Span<int> view)
+    {
+        if (serial <= 0 || _snapSerial - serial >= SnapshotSlots) return false;
+        
+        var slot = (serial & (SnapshotSlots - 1)) * 9;
+        for (var i = 0; i < 9; i++) rotation[i] = _snapRt[slot + i];
+        
+        slot = (serial & (SnapshotSlots - 1)) * 3;
+        for (var i = 0; i < 3; i++) translation[i] = _snapTr[slot + i];
+        for (var i = 0; i < 3; i++) view[i] = _snapView[slot + i];
+        
+        return true;
+    }
+    
     private static readonly byte[] Unr = BuildUnr();
 
     private static byte[] BuildUnr()
@@ -310,7 +355,7 @@ public static class Gte
         px = Math.Clamp(px, -0x400, 0x3FF);
         py = Math.Clamp(py, -0x400, 0x3FF);
 
-        Pgxp.PgxpGte.PushVertex(px, py, (float)w, Pgxp.PgxpGte.PackXy(nx, ny));
+        Pgxp.PgxpGte.PushVertex(px, py, (float)w, Pgxp.PgxpGte.PackXy(nx, ny), TransformSerial);
     }
 
     public static void Rtps(int sf, bool lm)
@@ -818,6 +863,8 @@ public static class Gte
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteControl(int reg, uint val)
     {
+        if (reg <= 7 || reg is 24 or 25 or 26) _snapDirty = true;
+        
         switch (reg)
         {
             case 0:

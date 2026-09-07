@@ -11,6 +11,7 @@ public sealed partial class Gpu
         public float Px, Py, Pw;
         public bool Precise;
         public bool PreciseW;
+        public int Transform;
     }
 
     private static readonly RenderPrimEvent _primEvent = new();
@@ -59,20 +60,26 @@ public sealed partial class Gpu
                 float px = 0f, py = 0f, pw = 1f;
                 var validW = false;
                 var seq = 0u;
+                var transform = 0;
                 var found = _fifoBase != 0u &&
                             Pgxp.PgxpMemory.TryLoad(_fifoBase + (uint)slot * 4u, vw, out px, out py, out pw,
-                                out validW, out seq);
+                                out validW, out seq, out transform);
 
-                if (!found) found = Pgxp.PgxpGpu.TryGetVertex(vw, 0u, false, out px, out py, out pw, out validW, out seq);
+                if (!found) found = Pgxp.PgxpGpu.TryGetVertex(vw, 0u, false, out px, out py, out pw, out validW, out seq, out transform);
 
                 if (found)
                 {
-                    v[i].Px = _drawOffsetX + px;
-                    v[i].Py = _drawOffsetY + py;
                     v[i].Pw = pw;
-                    v[i].Precise = true;
-                    v[i].PreciseW = validW;
+                    v[i].Transform = transform != 0 ? transform : -1;
                     seqs[i] = seq;
+
+                    if (WithinTolerance(px, py, vw))
+                    {
+                        v[i].Px = _drawOffsetX + px;
+                        v[i].Py = _drawOffsetY + py;
+                        v[i].Precise = true;
+                        v[i].PreciseW = validW;
+                    }
                 }
             }
 
@@ -274,6 +281,14 @@ public sealed partial class Gpu
         return (x & 0x400) != 0 ? x - 0x800 : x;
     }
 
+    private static bool WithinTolerance(float px, float py, uint w)
+    {
+        var tolerance = Pgxp.Pgxp.Tolerance;
+        if (tolerance < 0f) return true;
+        
+        return Math.Abs(px - CoordX(w)) <= tolerance && Math.Abs(py - CoordY(w)) <= tolerance;
+    }
+    
     private static int CoordY(uint w)
     {
         var y = (int)((w >> 16) & 0x7FF);
@@ -302,13 +317,15 @@ public sealed partial class Gpu
         for (var i = 0; i < n; i++)
         {
             if (v[i].Precise) continue;
-            if (!Pgxp.PgxpGpu.TryGetVertex(words[i], hint, true, out var px, out var py, out var pw, out var validW, out _)) continue;
+            if (!Pgxp.PgxpGpu.TryGetVertex(words[i], hint, true, out var px, out var py, out var pw, out var validW, out _, out var transform)) continue;
+            if (!WithinTolerance(px, py, words[i])) continue;
 
             v[i].Px = _drawOffsetX + px;
             v[i].Py = _drawOffsetY + py;
             v[i].Pw = pw;
             v[i].Precise = true;
             v[i].PreciseW = validW;
+            v[i].Transform = transform != 0 ? transform : -1;
         }
     }
 }

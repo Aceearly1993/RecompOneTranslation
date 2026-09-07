@@ -19,20 +19,26 @@ internal struct TriRecord
     public HleVertex B;
     public HleVertex C;
     public PrimFlags Flags;
-    public ulong Key;
-    public uint Address;
-    public int Sub;
-    public int Match;
+    public int Transform;
     public float OffsetX;
     public float OffsetY;
 }
 
-internal struct TriMotion
+internal struct TransformRecord
 {
-    public float AX, AY, AZ;
-    public float BX, BY, BZ;
-    public float CX, CY, CZ;
-    public byte Moved;
+    public int Serial;
+    public short R0, R1, R2, R3, R4, R5, R6, R7, R8;
+    public int TX, TY, TZ;
+    public int H, OFX, OFY;
+    public float Vx, Vy, Vz;
+    public float Sx, Sy;
+    public float Vsx, Vsy;
+    public bool Screened;
+    public int Tris;
+    public int Match;
+    public bool Lerp;
+    public bool Warpable;
+    public int Held;
 }
 
 internal struct RectRecord
@@ -83,7 +89,7 @@ internal sealed class FrameGraph
     public readonly List<int> Slots = [];
     public readonly List<HleDrawEnv> Envs = [];
     public readonly List<TriRecord> Tris = [];
-    public readonly List<TriMotion> Motion = [];
+    public readonly List<TransformRecord> Transforms = [];
     public readonly List<RectRecord> Rects = [];
     public readonly List<LineRecord> Lines = [];
     public readonly List<FillRecord> Fills = [];
@@ -101,7 +107,7 @@ internal sealed class FrameGraph
         Slots.Clear();
         Envs.Clear();
         Tris.Clear();
-        Motion.Clear();
+        Transforms.Clear();
         Rects.Clear();
         Lines.Clear();
         Fills.Clear();

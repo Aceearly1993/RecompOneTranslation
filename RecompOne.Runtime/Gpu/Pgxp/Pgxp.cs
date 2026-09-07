@@ -13,6 +13,8 @@ public static class Pgxp
     public const string KeyMemory = "pgxp.memory";
     public const string KeyTolerance = "pgxp.tolerance";
     
+    public const float DefaultTolerance = 2f;
+    
     private static bool _loaded;
     
     public static bool Enabled { get; private set; }
@@ -37,7 +39,7 @@ public static class Pgxp
         CacheW = VertexCache && view.GetBool(KeyCacheW, true);
         CpuTracking = Enabled && view.GetBool(KeyCpu, true);
         MemoryTracking = Enabled && view.GetBool(KeyMemory, true);
-        Tolerance = view.GetFloat(KeyTolerance, 1f);
+        Tolerance = view.GetFloat(KeyTolerance, DefaultTolerance);
         
         _loaded = true;
     }

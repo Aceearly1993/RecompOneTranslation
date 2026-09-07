@@ -16,7 +16,7 @@ public static class PgxpGte
     public static ref PgxpValue Sxy1 => ref _sxy1;
     public static ref PgxpValue Sxy2 => ref _sxy2;
     
-    public static void PushVertex(float x, float y, float w, uint packed)
+    public static void PushVertex(float x, float y, float w, uint packed, int transform)
     {
         _sxy0 = _sxy1;
         _sxy1 = _sxy2;
@@ -27,6 +27,7 @@ public static class PgxpGte
         _sxy2.Value = packed;
         _sxy2.Flags = PgxpFlags.ValidAll;
         _sxy2.Count = _count++;
+        _sxy2.Transform = transform;
         
         _data[12] = _sxy0;
         _data[13] = _sxy1;
@@ -43,7 +44,6 @@ public static class PgxpGte
         _sxy2.Flags = PgxpFlags.None;
         _count = 0;
         
-        
         for (var i = 0; i < _data.Length; i++) _data[i].Flags = PgxpFlags.None;
     }
     
@@ -55,7 +55,7 @@ public static class PgxpGte
         var p1 = PackXy(x1, y1);
         var p2 = PackXy(x2, y2);
 
-        if (!PgxpFlags.Matches(in _sxy0, p0) || !PgxpFlags.Matches(in _sxy1, p1) || !PgxpFlags.Matches(in _sxy2, p2)) return false;
+        if (!Precise(in _sxy0, p0) || !Precise(in _sxy1, p1) || !Precise(in _sxy2, p2)) return false;
         var nclip = (double)_sxy0.X * (_sxy1.Y - _sxy2.Y) + (double)_sxy1.X * (_sxy2.Y - _sxy0.Y) + (double)_sxy2.X * (_sxy0.Y - _sxy1.Y);
         
         var magnitude = Math.Abs(nclip);
@@ -63,6 +63,11 @@ public static class PgxpGte
         
         result = nclip;
         return true;
+    }
+    
+    private static bool Precise(in PgxpValue value, uint packed)
+    {
+        return PgxpFlags.Matches(in value, packed) && (value.Flags & PgxpFlags.Valid2) != 0;
     }
     
     public static uint PackXy(int x, int y)

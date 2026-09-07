@@ -57,14 +57,38 @@ public class ViewConfig
     {
         Values[key] = value;
     }
-
+    
+    public bool Has(string key)
+    {
+        return Values.ContainsKey(key);
+    }
+    
+    public void Default(string key, bool value)
+    {
+        if (!Values.ContainsKey(key)) SetBool(key, value);
+    }
+    
+    public void Default(string key, int value)
+    {
+        if (!Values.ContainsKey(key)) SetInt(key, value);
+    }
+    
+    public void Default(string key, float value)
+    {
+        if (!Values.ContainsKey(key)) SetFloat(key, value);
+    }
+    
+    public void Default(string key, string value)
+    {
+        if (!Values.ContainsKey(key)) SetString(key, value);
+    }
+    
     public bool HideTopBar
     {
         get => GetBool("HideTopBar");
         set => SetBool("HideTopBar", value);
     }
-
-    //todo: put top right
+    
     public bool ShowFps
     {
         get => GetBool("ShowFps");

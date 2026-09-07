@@ -138,7 +138,7 @@ internal sealed class DisplaySettingsSection : ISettingsSection
         ImGui.SameLine(column * 2f);
         Toggle(Pgxp.Pgxp.KeyCacheW, "settings.display.pgxp_cache_w", "settings.display.pgxp_cache_w_hint", true);
 
-        var tolerance = ConfigManager.View.GetFloat(Pgxp.Pgxp.KeyTolerance, -1f);
+        var tolerance = ConfigManager.View.GetFloat(Pgxp.Pgxp.KeyTolerance, Pgxp.Pgxp.DefaultTolerance);
         if (ImGui.SliderFloat(Localization.T("settings.display.pgxp_tolerance"), ref tolerance, -1f, 10f, tolerance < 0f ? Localization.T("settings.display.pgxp_tolerance_off") : "%.2f"))
         {
             ConfigManager.View.SetFloat(Pgxp.Pgxp.KeyTolerance, tolerance);

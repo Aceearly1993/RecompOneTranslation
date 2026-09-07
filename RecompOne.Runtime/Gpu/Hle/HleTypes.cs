@@ -7,6 +7,8 @@ public struct HleVertex
     public byte R, G, B;
     public float U, V;
     public bool HasGteZ;
+    public float Depth;
+    public int Transform;
 }
 
 public struct PrimFlags

@@ -32,6 +32,8 @@ public static class PgxpMemory
         ref var slot = ref _shadow[Index(address)];
         var srcValid = (src.Flags & PgxpFlags.Valid0) != 0;
         
+        slot.Transform = src.Transform;
+        
         if ((address & 2u) != 0)
         {
             slot.Y = src.X;
@@ -50,7 +52,6 @@ public static class PgxpMemory
         slot.Z = src.Z;
         slot.Flags |= PgxpFlags.Valid2;
     }
-    
     
     public static void LoadHalf(uint address, uint value, ref PgxpValue dest)
     {
@@ -90,14 +91,14 @@ public static class PgxpMemory
     {
         if (!Pgxp.MemoryTracking || _shadow.Length == 0) return;
 
-        
         ref var slot = ref _shadow[Index(address)];
         slot.Flags = PgxpFlags.None;
         slot.Value = written;
     }
     public static bool TryLoad(uint address, uint packed, out float x, out float y, out float w, out bool validW,
-        out uint seq)
+        out uint seq, out int transform)
     {
+        transform = 0;
         x = 0f;
         y = 0f;
         w = 1f;
@@ -113,6 +114,7 @@ public static class PgxpMemory
         y = slot.Y;
         w = slot.Z;
         seq = slot.Count;
+        transform = slot.Transform;
         return true;
     }
     

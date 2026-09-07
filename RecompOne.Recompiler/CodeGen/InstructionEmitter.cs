@@ -29,7 +29,17 @@ public static class InstructionEmitter
 
     private static string Hook(string call)
     {
-        return $" RecompOne.Runtime.Pgxp.PgxpCpu.{call};";
+        return $" if (RecompOne.Runtime.Pgxp.Pgxp.CpuTracking) RecompOne.Runtime.Pgxp.PgxpCpu.{call};";
+    }
+
+    private static string Track1(string body, string call, int reg)
+    {
+        return $"{{ var _v = {R(reg)}; {body}{Hook(call)} }}";
+    }
+
+    private static string Track2(string body, string call, int rs, int rt)
+    {
+        return $"{{ var _s = {R(rs)}; var _t = {R(rt)}; {body}{Hook(call)} }}";
     }
 
     private static string Addr(int rs, short imm, bool moved = false, uint reloc = 0)
@@ -53,7 +63,6 @@ public static class InstructionEmitter
             _ => $"0u /* COP0[{rd}] */"
         };
     }
-
 
     private static string Cop0Write(int rd, string val)
     {
@@ -83,36 +92,46 @@ public static class InstructionEmitter
         if (op == 0)
             return (int)fn switch
             {
-                0 => rd == 0 ? "" : sa == 0 ? $"{RD} = {RT};" : $"{RD} = {RT} << {sa};",
-                2 => rd == 0 ? "" : $"{RD} = {RT} >> {sa};",
-                3 => rd == 0 ? "" : $"{RD} = (uint)((int){RT} >> {sa});",
-                4 => rd == 0 ? "" : $"{RD} = {RT} << (int)({RS} & 31u);",
-                6 => rd == 0 ? "" : $"{RD} = {RT} >> (int)({RS} & 31u);",
-                7 => rd == 0 ? "" : $"{RD} = (uint)((int){RT} >> (int)({RS} & 31u));",
+                0 => rd == 0 ? "" : sa == 0
+                    ? $"{RD} = {RT};" + Hook($"Move({rd}, {rt}, {RD})")
+                    : Track1($"{RD} = {RT} << {sa};", $"Sll({rd}, {rt}, {sa}, {RD}, _v)", rt),
+                2 => rd == 0 ? "" : Track1($"{RD} = {RT} >> {sa};", $"Srl({rd}, {rt}, {sa}, {RD}, _v)", rt),
+                3 => rd == 0 ? "" : Track1($"{RD} = (uint)((int){RT} >> {sa});", $"Sra({rd}, {rt}, {sa}, {RD}, _v)", rt),
+                4 => rd == 0 ? "" : Track2($"{RD} = _t << (int)(_s & 31u);", $"Sll({rd}, {rt}, (int)(_s & 31u), {RD}, _t)", rs, rt),
+                6 => rd == 0 ? "" : Track2($"{RD} = _t >> (int)(_s & 31u);", $"Srl({rd}, {rt}, (int)(_s & 31u), {RD}, _t)", rs, rt),
+                7 => rd == 0 ? "" : Track2($"{RD} = (uint)((int)_t >> (int)(_s & 31u));", $"Sra({rd}, {rt}, (int)(_s & 31u), {RD}, _t)", rs, rt),
                 8 => "",
                 9 => "",
                 12 => "Bios.Syscall(c, m);",
                 13 => "Bios.Break(c, m);",
-                16 => rd == 0 ? "" : $"{RD} = c.HI;",
-                17 => $"c.HI = {RS};",
-                18 => rd == 0 ? "" : $"{RD} = c.LO;",
-                19 => $"c.LO = {RS};",
-                24 => $"{{ var _r = (long)(int){RS} * (int){RT}; c.LO = (uint)_r; c.HI = (uint)(_r >> 32); }}",
-                25 => $"{{ var _r = (ulong){RS} * {RT}; c.LO = (uint)_r; c.HI = (uint)(_r >> 32); }}",
+                16 => rd == 0 ? "" : $"{RD} = c.HI;" + Hook($"Mfhi({rd}, {RD}, c.HI)"),
+                17 => $"c.HI = {RS};" + Hook($"Mthi({rs}, c.HI, c.HI)"),
+                18 => rd == 0 ? "" : $"{RD} = c.LO;" + Hook($"Mflo({rd}, {RD}, c.LO)"),
+                19 => $"c.LO = {RS};" + Hook($"Mtlo({rs}, c.LO, c.LO)"),
+                24 => Track2($"var _r = (long)(int)_s * (int)_t; c.LO = (uint)_r; c.HI = (uint)(_r >> 32);", $"Mult({rs}, {rt}, c.HI, c.LO, _s, _t, true)", rs, rt),
+                25 => Track2($"var _r = (ulong)_s * _t; c.LO = (uint)_r; c.HI = (uint)(_r >> 32);", $"Mult({rs}, {rt}, c.HI, c.LO, _s, _t, false)", rs, rt),
                 26 => rt == 0
                     ? "c.LO = 0u; c.HI = 0u;"
-                    : $"if ({RT} != 0u) {{ if ((int){RS} == int.MinValue && (int){RT} == -1) {{ c.LO = 0x80000000u; c.HI = 0u; }} else {{ c.LO = (uint)((int){RS} / (int){RT}); c.HI = (uint)((int){RS} % (int){RT}); }} }}",
+                    : Track2($"if (_t != 0u) {{ if ((int)_s == int.MinValue && (int)_t == -1) {{ c.LO = 0x80000000u; c.HI = 0u; }} else {{ c.LO = (uint)((int)_s / (int)_t); c.HI = (uint)((int)_s % (int)_t); }} }}", $"Div({rs}, {rt}, c.HI, c.LO, _s, _t, true)", rs, rt),
                 27 => rt == 0
                     ? "c.LO = 0u; c.HI = 0u;"
-                    : $"if ({RT} != 0u) {{ c.LO = {RS} / {RT}; c.HI = {RS} % {RT}; }}",
-                32 or 33 => rd == 0 ? "" : $"{RD} = {RS} + {RT};",
-                34 or 35 => rd == 0 ? "" : $"{RD} = {RS} - {RT};",
-                36 => rd == 0 ? "" : $"{RD} = {RS} & {RT};",
-                37 => rd == 0 ? "" : rs == 0 ? $"{RD} = {RT};" : rt == 0 ? $"{RD} = {RS};" : $"{RD} = {RS} | {RT};",
-                38 => rd == 0 ? "" : $"{RD} = {RS} ^ {RT};",
-                39 => rd == 0 ? "" : $"{RD} = ~({RS} | {RT});",
-                42 => rd == 0 ? "" : $"{RD} = (int){RS} < (int){RT} ? 1u : 0u;",
-                43 => rd == 0 ? "" : $"{RD} = {RS} < {RT} ? 1u : 0u;",
+                    : Track2($"if (_t != 0u) {{ c.LO = _s / _t; c.HI = _s % _t; }}", $"Div({rs}, {rt}, c.HI, c.LO, _s, _t, false)", rs, rt),
+                32 or 33 => rd == 0 ? "" : rt == 0
+                    ? $"{RD} = {RS};" + Hook($"Move({rd}, {rs}, {RD})")
+                    : rs == 0
+                        ? $"{RD} = {RT};" + Hook($"Move({rd}, {rt}, {RD})")
+                        : Track2($"{RD} = _s + _t;", $"Add({rd}, {rs}, {rt}, {RD}, _s, _t)", rs, rt),
+                34 or 35 => rd == 0 ? "" : Track2($"{RD} = _s - _t;", $"Sub({rd}, {rs}, {rt}, {RD}, _s, _t)", rs, rt),
+                36 => rd == 0 ? "" : Track2($"{RD} = _s & _t;", $"Bitwise({rd}, {rs}, {rt}, {RD}, _s, _t)", rs, rt),
+                37 => rd == 0 ? "" : rs == 0
+                    ? $"{RD} = {RT};" + Hook($"Move({rd}, {rt}, {RD})")
+                    : rt == 0
+                        ? $"{RD} = {RS};" + Hook($"Move({rd}, {rs}, {RD})")
+                        : Track2($"{RD} = _s | _t;", $"Bitwise({rd}, {rs}, {rt}, {RD}, _s, _t)", rs, rt),
+                38 => rd == 0 ? "" : Track2($"{RD} = _s ^ _t;", $"Bitwise({rd}, {rs}, {rt}, {RD}, _s, _t)", rs, rt),
+                39 => rd == 0 ? "" : Track2($"{RD} = ~(_s | _t);", $"Bitwise({rd}, {rs}, {rt}, {RD}, _s, _t)", rs, rt),
+                42 => rd == 0 ? "" : Track2($"{RD} = (int)_s < (int)_t ? 1u : 0u;", $"Slt({rd}, {rs}, {rt}, {RD}, _s, _t)", rs, rt),
+                43 => rd == 0 ? "" : Track2($"{RD} = _s < _t ? 1u : 0u;", $"Sltu({rd}, {rs}, {rt}, {RD}, _s, _t)", rs, rt),
                 _ => UnknownInstr(i, $"SPECIAL fn=0x{fn:X2}")
             };
 
@@ -121,7 +140,7 @@ public static class InstructionEmitter
         if (op == 16) //cop0
         {
             var cop0rs = (i.Word >> 21) & 0x1F;
-            if (cop0rs == 0) return rt == 0 ? "" : $"{RT} = {Cop0Read(rd)};";
+            if (cop0rs == 0) return rt == 0 ? "" : $"{RT} = {Cop0Read(rd)};" + Hook($"Invalidate({rt})");
             if (cop0rs == 4) return Cop0Write(rd, RT);
             if (cop0rs == 16 && fn == 16) return "c.SR = (c.SR & ~0xFu) | ((c.SR >> 2) & 0xFu);";
             return $"/* COP0 rs={cop0rs} */";
@@ -168,7 +187,7 @@ public static class InstructionEmitter
             return cop2rs switch
             {
                 0 => rt == 0 ? "" : $"{RT} = RecompOne.Runtime.Gte.Read({rd});" + Hook($"Mfc2({rt}, {rd}, {RT})"),
-                2 => rt == 0 ? "" : $"{RT} = RecompOne.Runtime.Gte.ReadControl({rd});",
+                2 => rt == 0 ? "" : $"{RT} = RecompOne.Runtime.Gte.ReadControl({rd});" + Hook($"Invalidate({rt})"),
                 4 => $"RecompOne.Runtime.Gte.Write({rd}, {RT});" + Hook($"Mtc2({rd}, {rt}, {RT})"),
                 6 => $"RecompOne.Runtime.Gte.WriteControl({rd}, {RT});",
                 _ => $"/* COP2 rs={cop2rs} */"
@@ -181,29 +200,32 @@ public static class InstructionEmitter
         return (int)op switch
         {
             8 or 9 => rt == 0 ? "" :
-                moved ? $"{RT} = 0x{reloc:X8}u;" :
-                rs == 0 ? $"{RT} = 0x{unchecked((uint)(int)imm):X8}u;" :
-                imm >= 0 ? $"{RT} = {RS} + 0x{(uint)imm:X}u;" : $"{RT} = {RS} - 0x{unchecked((uint)-(int)imm):X}u;",
-            10 => rt == 0 ? "" : $"{RT} = (int){RS} < {(int)imm} ? 1u : 0u;",
-            11 => rt == 0 ? "" : $"{RT} = {RS} < 0x{(uint)(int)imm:X8}u ? 1u : 0u;",
-            12 => rt == 0 ? "" : $"{RT} = {RS} & 0x{immU:X4}u;",
+                moved ? $"{RT} = 0x{reloc:X8}u;" + Hook($"Const({rt}, {RT})") :
+                rs == 0 ? $"{RT} = 0x{unchecked((uint)(int)imm):X8}u;" + Hook($"Const({rt}, {RT})") :
+                imm >= 0
+                    ? Track1($"{RT} = {RS} + 0x{(uint)imm:X}u;", $"Addi({rt}, {rs}, {imm}, {RT}, _v)", rs)
+                    : Track1($"{RT} = {RS} - 0x{unchecked((uint)-(int)imm):X}u;", $"Addi({rt}, {rs}, {imm}, {RT}, _v)", rs),
+            10 => rt == 0 ? "" : Track1($"{RT} = (int){RS} < {(int)imm} ? 1u : 0u;", $"Slti({rt}, {rs}, {imm}, {RT}, _v)", rs),
+            11 => rt == 0 ? "" : Track1($"{RT} = {RS} < 0x{(uint)(int)imm:X8}u ? 1u : 0u;", $"Sltiu({rt}, {rs}, 0x{immU:X4}, {RT}, _v)", rs),
+            12 => rt == 0 ? "" : Track1($"{RT} = {RS} & 0x{immU:X4}u;", $"Andi({rt}, {rs}, 0x{immU:X4}, {RT}, _v)", rs),
             13 => rt == 0 ? "" :
-                moved ? $"{RT} = 0x{reloc:X8}u;" :
-                immU == 0 ? $"{RT} = {RS};" : $"{RT} = {RS} | 0x{immU:X4}u;",
-            14 => rt == 0 ? "" : $"{RT} = {RS} ^ 0x{immU:X4}u;",
-            15 => rt == 0 ? "" : $"{RT} = 0x{(uint)immU << 16:X8}u;",
-            32 => rt == 0 ? "" : $"{RT} = (uint)(sbyte)mem.ReadU8({Addr(rs, imm, moved, reloc)});",
+                moved ? $"{RT} = 0x{reloc:X8}u;" + Hook($"Const({rt}, {RT})") :
+                immU == 0 ? $"{RT} = {RS};" + Hook($"Move({rt}, {rs}, {RT})") :
+                Track1($"{RT} = {RS} | 0x{immU:X4}u;", $"Ori({rt}, {rs}, 0x{immU:X4}, {RT}, _v)", rs),
+            14 => rt == 0 ? "" : Track1($"{RT} = {RS} ^ 0x{immU:X4}u;", $"Ori({rt}, {rs}, 0x{immU:X4}, {RT}, _v)", rs),
+            15 => rt == 0 ? "" : $"{RT} = 0x{(uint)immU << 16:X8}u;" + Hook($"Lui({rt}, {RT})"),
+            32 => rt == 0 ? "" : $"{RT} = (uint)(sbyte)mem.ReadU8({Addr(rs, imm, moved, reloc)});" + Hook($"Invalidate({rt})"),
             33 => rt == 0 ? "" : $"{RT} = (uint)(short)mem.ReadU16({Addr(rs, imm, moved, reloc)});" + Hook($"Lh({rt}, {Addr(rs, imm, moved, reloc)}, {RT})"),
-            34 => rt == 0 ? "" : $"{RT} = mem.ReadWordLeft({RT}, {Addr(rs, imm, moved, reloc)});",
+            34 => rt == 0 ? "" : $"{RT} = mem.ReadWordLeft({RT}, {Addr(rs, imm, moved, reloc)});" + Hook($"Invalidate({rt})"),
             35 => rt == 0 ? "" : $"{RT} = mem.ReadU32({Addr(rs, imm, moved, reloc)});" + Hook($"Lw({rt}, {Addr(rs, imm, moved, reloc)}, {RT})"),
-            36 => rt == 0 ? "" : $"{RT} = mem.ReadU8({Addr(rs, imm, moved, reloc)});",
+            36 => rt == 0 ? "" : $"{RT} = mem.ReadU8({Addr(rs, imm, moved, reloc)});" + Hook($"Invalidate({rt})"),
             37 => rt == 0 ? "" : $"{RT} = mem.ReadU16({Addr(rs, imm, moved, reloc)});" + Hook($"Lh({rt}, {Addr(rs, imm, moved, reloc)}, {RT})"),
-            38 => rt == 0 ? "" : $"{RT} = mem.ReadWordRight({RT}, {Addr(rs, imm, moved, reloc)});",
-            40 => $"mem.WriteU8({Addr(rs, imm, moved, reloc)}, (byte){RT});",
+            38 => rt == 0 ? "" : $"{RT} = mem.ReadWordRight({RT}, {Addr(rs, imm, moved, reloc)});" + Hook($"Invalidate({rt})"),
+            40 => $"mem.WriteU8({Addr(rs, imm, moved, reloc)}, (byte){RT});" + Hook($"InvalidateMem({Addr(rs, imm, moved, reloc)}, {RT})"),
             41 => $"mem.WriteU16({Addr(rs, imm, moved, reloc)}, (ushort){RT});" + Hook($"Sh({rt}, {Addr(rs, imm, moved, reloc)}, {RT})"),
-            42 => $"mem.WriteWordLeft({Addr(rs, imm, moved, reloc)}, {RT});",
+            42 => $"mem.WriteWordLeft({Addr(rs, imm, moved, reloc)}, {RT});" + Hook($"InvalidateMem({Addr(rs, imm, moved, reloc)}, {RT})"),
             43 => $"mem.WriteU32({Addr(rs, imm, moved, reloc)}, {RT});" + Hook($"Sw({rt}, {Addr(rs, imm, moved, reloc)}, {RT})"),
-            46 => $"mem.WriteWordRight({Addr(rs, imm, moved, reloc)}, {RT});",
+            46 => $"mem.WriteWordRight({Addr(rs, imm, moved, reloc)}, {RT});" + Hook($"InvalidateMem({Addr(rs, imm, moved, reloc)}, {RT})"),
             50 =>
                 $"{{ var _lw = mem.ReadU32({Addr(rs, imm, moved, reloc)}); RecompOne.Runtime.Gte.Write({rt}, _lw); RecompOne.Runtime.Pgxp.PgxpCpu.Lwc2({rt}, {Addr(rs, imm, moved, reloc)}, _lw); }}",
             58 =>
@@ -330,7 +352,7 @@ public static class InstructionEmitter
             if (link)
             {
                 Ds();
-                sb.AppendLine(ctx.Trail(ctrl, $"{indent}c.RA = 0x{pc + 8:X8}u;"));
+                sb.AppendLine(ctx.Trail(ctrl, $"{indent}c.RA = 0x{pc + 8:X8}u;" + Hook("Const(31, c.RA)")));
                 sb.AppendLine(ctx.Trail(ctrl, $"{indent}if ({cond}) {{"));
                 if (InFunc(target)) sb.AppendLine(ctx.Trail(ctrl, $"{ind2}goto L{target:X8};"));
                 else CallOrDispatch(target, ind2);
@@ -348,7 +370,7 @@ public static class InstructionEmitter
         {
             var target = ctrl.JumpTarget;
             Ds();
-            sb.AppendLine(ctx.Trail(ctrl, $"{indent}c.RA = 0x{pc + 8:X8}u;"));
+            sb.AppendLine(ctx.Trail(ctrl, $"{indent}c.RA = 0x{pc + 8:X8}u;" + Hook("Const(31, c.RA)")));
             CallOrDispatch(target, indent);
             return;
         }
