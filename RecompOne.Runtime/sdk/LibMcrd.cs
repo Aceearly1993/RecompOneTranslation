@@ -28,6 +28,11 @@ public static class LibMcrd
 
     private static uint _callback;
 
+    internal static void Detach()
+    {
+        _callback = 0;
+    }
+
     private static bool _pending;
     private static uint _pendingCmd;
     private static uint _pendingResult;

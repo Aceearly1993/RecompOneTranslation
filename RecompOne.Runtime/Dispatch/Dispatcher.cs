@@ -214,16 +214,45 @@ public static class Dispatcher
         return addr switch
         {
             0xA0u or 0xB0u or 0xC0u => true,
-            _ => (addr & 0xFF000000u) == 0xBFC00000u || _funcMap.ContainsKey(addr)
+            _ => (addr & 0xFF000000u) == 0xBFC00000u || _funcMap.ContainsKey(addr) ||
+                 _funcMap.ContainsKey(Cached(addr))
         };
     }
+
+    private static uint Cached(uint addr)
+    {
+        var phys = addr & 0x1FFFFFFFu;
+        return phys < 0x00800000u ? 0x80000000u | phys : addr;
+    }
+
+    public static bool Tolerant;
+
+    private static readonly HashSet<uint> _reported = [];
 
     public static void Call(CpuContext c, IMemory m, uint addr)
     {
         if (BiosKernel.TryDispatch(c, m, addr)) return;
-        if (!_funcMap.TryGetValue(addr, out var fn))
-            throw new InvalidOperationException($"unmapped call: 0x{addr:X8}");
-        fn(c, m);
+
+        if (_funcMap.TryGetValue(addr, out var fn))
+        {
+            fn(c, m);
+            return;
+        }
+
+        var cached = Cached(addr);
+        if (cached != addr && _funcMap.TryGetValue(cached, out fn))
+        {
+            fn(c, m);
+            return;
+        }
+        
+        if (!Tolerant) throw new InvalidOperationException($"unmapped call: 0x{addr:X8}");
+
+        lock (_reported)
+            if (_reported.Add(addr))
+                Console.WriteLine($"[Dispatcher] skipped an unmapped call to 0x{addr:X8}");
+
+        c.V0 = 0u;
     }
 
     private static void Rebuild()

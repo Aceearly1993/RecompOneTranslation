@@ -13,6 +13,7 @@ public static class SdkMatcher
 
         var found = new List<Signature>();
         var anchors = new Dictionary<(string Sdk, string Object), long>();
+        var votes = new Dictionary<(string Sdk, string Object), Dictionary<long, int>>();
         var pending = new List<(MipsFunction Fn, int Start, int Count)>();
 
         int named = 0, ambiguous = 0, byLayout = 0;
@@ -51,7 +52,29 @@ public static class SdkMatcher
 
             foreach (var hit in found)
             foreach (var sdk in hit.Sdk)
-                anchors[(sdk, hit.Object)] = fn.Start - hit.Offset;
+            {
+                var key = (sdk, hit.Object);
+                if (!votes.TryGetValue(key, out var tally)) votes[key] = tally = new Dictionary<long, int>();
+
+                var seat = fn.Start - hit.Offset;
+                tally.TryGetValue(seat, out var seen);
+                tally[seat] = seen + 1;
+            }
+        }
+
+        foreach (var (key, tally) in votes)
+        {
+            var best = 0L;
+            var most = 0;
+
+            foreach (var (seat, seen) in tally)
+                if (seen > most || (seen == most && seat < best))
+                {
+                    most = seen;
+                    best = seat;
+                }
+
+            anchors[key] = best;
         }
 
         foreach (var (fn, start, count) in pending)

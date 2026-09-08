@@ -423,24 +423,7 @@ public static class HostWindow
         if (_headless || _window == null) return;
 
         while (StartupNoticePopup.NeedsAck)
-        {
-            try
-            {
-                _window.DoEvents();
-            }
-            catch
-            {
-            }
-
-            if (_window.IsClosing)
-            {
-                Runtime.Shutdown();
-                Environment.Exit(0);
-            }
-
-            InputManager.Poll();
-            _window.DoRender();
-        }
+            HandOverFrame();
 
         while (true)
         {
@@ -448,23 +431,38 @@ public static class HostWindow
             if (!string.IsNullOrWhiteSpace(path) && File.Exists(path) && Runtime.ValidateDisc(path) == null)
                 return;
 
+            HandOverFrame();
+        }
+    }
+    
+    private static void HandOverFrame()
+    {
+        var closing = false;
+
+        GpuJobs.Run(() =>
+        {
             try
             {
-                _window.DoEvents();
+                _window!.DoEvents();
             }
             catch
             {
             }
 
-            if (_window.IsClosing)
+            if (_window!.IsClosing)
             {
-                Runtime.Shutdown();
-                Environment.Exit(0);
+                closing = true;
+                return;
             }
 
             InputManager.Poll();
             _window.DoRender();
-        }
+        });
+
+        if (!closing) return;
+
+        Runtime.Shutdown();
+        Environment.Exit(0);
     }
 
     private static void OnLoad()

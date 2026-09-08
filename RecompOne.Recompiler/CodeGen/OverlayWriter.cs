@@ -243,9 +243,16 @@ public static class OverlayWriter
     private static void WriteAll(RecompOneConfig config, string outDir, string className, PsxExe mainExe,
         SystemCfg sysCfg, List<OverlayResult> overlayResults, List<MipsFunction> allFuncs)
     {
+        var overlayClass = SpreadClasses(className, overlayResults);
+        var funcClass = new Dictionary<uint, string>();
+
+        foreach (var result in overlayResults)
+        foreach (var func in result.Functions)
+            funcClass[func.Start] = overlayClass[result.Name];
+
         var uniqueAddrs = allFuncs.GroupBy(f => f.Start).Where(g => g.Count() == 1).Select(g => g.Key).ToHashSet();
         var knownFuncs = allFuncs.Where(f => uniqueAddrs.Contains(f.Start))
-            .ToDictionary(f => f.Start, f => $"{className}.{f.EmittedName}");
+            .ToDictionary(f => f.Start, f => $"{Owner(funcClass, f.Start, className)}.{f.EmittedName}");
 
         var conflictCount = allFuncs.Count - knownFuncs.Count;
         Console.WriteLine($"[Recompiler] total functions: {allFuncs.Count}");
@@ -257,14 +264,14 @@ public static class OverlayWriter
             var mainFunc = allFuncs.FirstOrDefault(f => f.Start == mainAddr);
             if (mainFunc == null)
                 throw new InvalidOperationException($"[recompiler] the main function not found at 0x{mainAddr:X8}");
-            mainCall = $"{className}.{mainFunc.EmittedName}";
+            mainCall = $"{Owner(funcClass, mainFunc.Start, className)}.{mainFunc.EmittedName}";
             Console.WriteLine($"[Recompiler] main: {mainCall} @ 0x{mainAddr:X8}");
         }
 
         foreach (var result in overlayResults)
         {
             Console.WriteLine($"[Recompiler] emiting {result.Name}.cs ({result.Functions.Count} functions)");
-            EmitOverlayFile(result.Name, result.Functions, className, knownFuncs, config.Debug, config.AddressComments,
+            EmitOverlayFile(result.Name, result.Functions, overlayClass[result.Name], knownFuncs, config.Debug, config.AddressComments,
                 config.DisasmComments, result.LbaStart, result.Base, result.Size, result.Instructions, outDir,
                 SymbolRelocator.Plan(result.Functions, config.Relocations, result.Name));
         }
@@ -276,6 +283,21 @@ public static class OverlayWriter
         Console.WriteLine("[Recompiler] finished "); //maybe add time it took
     }
 
+
+    private static string Owner(Dictionary<uint, string> funcClass, uint address, string fallback)
+    {
+        return funcClass.TryGetValue(address, out var owner) ? owner : fallback;
+    }
+
+    private static Dictionary<string, string> SpreadClasses(string className, List<OverlayResult> overlayResults)
+    {
+        var map = new Dictionary<string, string>();
+
+        foreach (var result in overlayResults)
+            map[result.Name] = $"{className}_{SafeIdentifier(result.Name)}";
+
+        return map;
+    }
 
     private static void EmitOverlayFile(string overlayName, List<MipsFunction> funcs, string className,
         Dictionary<uint, string> knownFuncs, bool debug, bool addressComments, bool disasmComments, int lbaStart,

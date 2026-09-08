@@ -41,7 +41,7 @@ public sealed class ChdImage : IDiscImage
     public bool HasTracks => _tracks.Count > 0;
 
     public IReadOnlyList<DiscTrack> Tracks => _tracks
-        .Select(t => new DiscTrack(t.Number, t.Kind, t.ReportedLba, SectorData))
+        .Select(t => new DiscTrack(t.Number, t.Kind, t.ReportedLba, SectorData, t.DiscBase))
         .ToList();
 
     public int LeadoutLba => _tracks.Count > 0 ? _tracks[^1].DiscBase + _tracks[^1].Frames : 0;
@@ -72,7 +72,27 @@ public sealed class ChdImage : IDiscImage
         lba = t.ReportedLba;
         return true;
     }
-
+    
+    public byte[] ReadRawSector(int lba)
+    {
+        var buf = new byte[SectorData];
+        if (lba < 0) return buf;
+        
+        foreach (var t in _tracks)
+        {
+            if (lba < t.DiscBase || lba >= t.DiscBase + t.Frames) continue;
+            
+            var frame = t.ChdFrame + (lba - t.DiscBase);
+            var hunk = frame / _framesPerHunk;
+            var indexInHunk = frame % _framesPerHunk;
+            var hunkData = _chd.ReadHunk(hunk);
+            Array.Copy(hunkData, indexInHunk * FrameSize, buf, 0, SectorData);
+            return buf;
+        }
+        
+        return buf;
+    }
+    
     public byte[] ReadSectorData(int lba, int size)
     {
         var buf = new byte[size];

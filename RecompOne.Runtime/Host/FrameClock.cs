@@ -4,7 +4,7 @@ namespace RecompOne.Runtime.Host;
 
 internal static class FrameClock
 {
-    private const double FrameMs = 1000.0 / 60.0;
+    private static double FrameMs => Sdk.LibGpu.Pal ? 1000.0 / 50.0 : 1000.0 / 60.0;
     private const double SpinMs = 1.5;
 
     private static readonly Stopwatch _clock = Stopwatch.StartNew();

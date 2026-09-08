@@ -154,9 +154,12 @@ public static class AutoConfigurator
     private static string Emit(RecompOneConfig config)
     {
         var root = JsonNode.Parse(JsonSerializer.Serialize(config, Pretty))!.AsObject();
+
+        if (root["overlays"] is JsonArray overlays)
+            foreach (var overlay in overlays)
+                Prune(overlay!.AsObject());
+
         Prune(root);
-        foreach (var overlay in root["overlays"]!.AsArray())
-            Prune(overlay!.AsObject());
         return root.ToJsonString(Pretty);
     }
 

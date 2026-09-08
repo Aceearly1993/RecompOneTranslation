@@ -120,7 +120,7 @@ public static class Interrupts
         }
     }
 
-    private const double VBlankMs = 1000.0 / 60.0;
+    private static double VBlankMs => Sdk.LibGpu.Pal ? 1000.0 / 50.0 : 1000.0 / 60.0;
     private static readonly System.Diagnostics.Stopwatch _vblankClock = System.Diagnostics.Stopwatch.StartNew();
     private static double _vblankEpoch;
     private static int _delivered;

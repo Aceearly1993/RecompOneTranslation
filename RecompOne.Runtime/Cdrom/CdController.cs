@@ -526,6 +526,11 @@ public sealed class CdController
         return (byte[])_dataBuf.Clone();
     }
 
+    public byte[] ReadRawSector(int lba)
+    {
+        return _fs.ReadRawSector(lba);
+    }
+
     public byte[] ReadSectorData(int lba, int size)
     {
         DbgReadRun(size == 2336 ? "readXA" : "read", lba);

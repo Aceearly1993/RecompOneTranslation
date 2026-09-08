@@ -24,6 +24,12 @@ public static class LibPad
         _buf2 = 0;
     }
 
+    internal static void Detach()
+    {
+        _buf1 = 0;
+        _buf2 = 0;
+    }
+
     public static void PadInitDirect(CpuContext c, IMemory m)
     {
         _buf1 = c.A0;

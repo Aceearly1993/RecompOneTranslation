@@ -9,7 +9,7 @@ public static class LibEtc
     private static int _vcount;
     private static readonly VSyncEvent _vsyncEvent = new();
 
-    private const double HblankHz = 15734.0; //correct?
+    private static double HblankHz => LibGpu.Pal ? 15625.0 : 15734.0; //correct?
 
     private static int _lastVSyncCount;
     private static double _lastVSyncMs;

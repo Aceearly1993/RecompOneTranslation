@@ -55,6 +55,11 @@ public sealed class DiscFs : IDisposable
         return _image.ReadSectorData(lba, size);
     }
 
+    public byte[] ReadRawSector(int lba)
+    {
+        return _image.ReadRawSector(lba);
+    }
+
     public byte[] ReadSectors(int lba, int size)
     {
         return ReadExtent(lba, size);
@@ -119,21 +124,34 @@ public sealed class DiscFs : IDisposable
     private Entry? LocateEntry(string name)
     {
         name = name.TrimStart('/', '\\');
-        try
+        var parts = name.Split('/', '\\');
+        var dir = Root();
+        var rooted = true;
+        
+        for (var i = 0; i < parts.Length - 1 && rooted; i++)
         {
-            var parts = name.Split('/', '\\');
-            var dir = Root();
-            for (var i = 0; i < parts.Length - 1; i++)
+            try
+            {
                 dir = Find(dir, StripVersion(parts[i]), true);
-            return Find(dir, StripVersion(parts[^1]), false);
+            }
+            catch (FileNotFoundException)
+            {
+                rooted = false;
+            }
         }
-        catch (FileNotFoundException)
+        if (rooted)
         {
+            try
+            {
+                return Find(dir, StripVersion(parts[^1]), false);
+            }
+            catch (FileNotFoundException)
+            {
+                return null;
+            }
         }
-
-        var slash = name.LastIndexOfAny(['/', '\\']);
-        var basename = slash >= 0 ? name[(slash + 1)..] : name;
-        return SearchEntry(Root(), StripVersion(basename).ToUpperInvariant());
+        
+        return SearchEntry(Root(), StripVersion(parts[^1]).ToUpperInvariant());
     }
 
     private Entry? SearchEntry(Entry dir, string name)

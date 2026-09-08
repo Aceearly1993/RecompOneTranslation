@@ -108,7 +108,38 @@ public static class LibGpu
 
         c.V0 = c.A0;
     }
-
+    
+    private static int _videoMode = -1;
+    
+    internal static bool Pal
+    {
+        get
+        {
+            if (_videoMode < 0) _videoMode = European() ? 1 : 0;
+            return _videoMode == 1;
+        }
+    }
+    
+    private static bool European()
+    {
+        var id = Assets.AssetApi.GameId;
+        return id.StartsWith("SCES", StringComparison.Ordinal) 
+               || id.StartsWith("SLES", StringComparison.Ordinal)
+               || id.StartsWith("SCED", StringComparison.Ordinal) 
+               || id.StartsWith("SLED", StringComparison.Ordinal);
+    }
+    
+    public static void SetVideoMode(CpuContext c, IMemory m)
+    {
+        c.V0 = Pal ? 1u : 0u;
+        _videoMode = c.A0 != 0 ? 1 : 0;
+    }
+    
+    public static void GetVideoMode(CpuContext c, IMemory m)
+    {
+        c.V0 = Pal ? 1u : 0u;
+    }
+    
     public static void PutDispEnv(CpuContext c, IMemory m)
     {
         var gpu = Runtime.Gpu;
@@ -125,8 +156,8 @@ public static class LibGpu
         short scrW = S16(m, env + 0x0C), scrH = S16(m, env + 0x0E);
         var isinter = m.ReadU8(env + 0x10);
         var isrgb24 = m.ReadU8(env + 0x11);
-        var pal = gpu.Pal;
-
+        var pal = Pal;
+        
         gpu.WriteGp1(0x05000000u | (((uint)dispY & 0x3FF) << 10) | ((uint)dispX & 0x3FF));
 
         var hStart = scrX * 10 + 0x260;

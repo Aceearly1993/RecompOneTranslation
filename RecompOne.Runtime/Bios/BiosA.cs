@@ -736,6 +736,9 @@ public static class BiosA
         }
 
         BiosB.ResetCallbacks();
+        Sdk.LibPad.Detach();
+        Sdk.LibCd.Detach();
+        Sdk.LibMcrd.Detach();
         Interrupts.ClearPending();
 
         c.A0 = argc;

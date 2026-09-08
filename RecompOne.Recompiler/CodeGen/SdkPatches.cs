@@ -21,7 +21,8 @@ public static class SdkPatches
         ("libgpu", "RecompOne.Runtime.Sdk.LibGpu", new[]
         {
             "DrawOTag", "DrawSync", "PutDrawEnv", "PutDispEnv",
-            "LoadImage", "StoreImage", "MoveImage", "ClearImage"
+            "LoadImage", "StoreImage", "MoveImage", "ClearImage",
+            "SetVideoMode", "GetVideoMode"
         }),
         ("libcdstream", "RecompOne.Runtime.Sdk.LibCdStream", new[]
         {
@@ -36,6 +37,20 @@ public static class SdkPatches
             "MemCardWriteFile", "MemCardCreateFile", "MemCardDeleteFile",
             "MemCardFormat", "MemCardUnformat", "MemCardGetDirentry",
             "MemCardSync", "MemCardCallback"
+        }),
+        ("libds", "RecompOne.Runtime.Sdk.LibDs", new[]
+        {
+            "DsInit", "DsReset", "DsClose", "DsSetDebug",
+            "DsCommand", "DsPacket", "DsSync", "DsFlush", "DsQueueLen",
+            "DsControl", "DsControlB", "DsControlF",
+            "DsSystemStatus", "DsStatus", "DsShellOpen", "DsLastCom", "DsLastPos",
+            "DsIntToPos", "DsPosToInt", "DsMix",
+            "DsSyncCallback", "DsReadyCallback", "DsReadCallback", "DsDataCallback",
+            "DsStartReadySystem", "DsEndReadySystem", "DsReadySystemMode",
+            "DsRead", "DsRead2", "DsReadSync", "DsReadBreak", "DsReadMode", "DsReadFile",
+            "DsReady", "DsGetSector", "DsGetSector2", "DsDataSync",
+            "DsSearchFile", "DsGetToc", "DsGetDiskType", "DsPlay",
+            "DsComstr", "DsIntstr"
         }),
         ("libpad", "RecompOne.Runtime.Sdk.LibPad", new[]
         {
@@ -82,6 +97,7 @@ public static class SdkPatches
     {
         var off = new HashSet<string>(disabled ?? [], StringComparer.OrdinalIgnoreCase);
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        var libds = !off.Contains("libds") && funcs.Any(f => f.Name is "DsInit" or "DsCommand" or "DsPacket");
         foreach (var (key, cls, names) in Libraries)
         {
             if (off.Contains(key)) continue;
@@ -95,6 +111,8 @@ public static class SdkPatches
             foreach (var name in names)
                 map[name] = target;
         }
+
+        //if (libds) Console.WriteLine("[recompiler] libds detected");
 
         if (off.Count > 0)
             Console.WriteLine($"[Recompiler] hle impl disabled for: {string.Join(", ", off)}");

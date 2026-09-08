@@ -6,7 +6,7 @@ public enum DiscTrackKind
     Audio
 }
 
-public readonly record struct DiscTrack(int Number, DiscTrackKind Kind, int StartLba, int SectorSize);
+public readonly record struct DiscTrack(int Number, DiscTrackKind Kind, int StartLba, int SectorSize, int PregapLba);
 
 public interface IDiscImage : IDisposable
 {
@@ -27,6 +27,8 @@ public interface IDiscImage : IDisposable
     bool TrackStartLba(int track, out int lba);
 
     byte[] ReadSectorData(int lba, int size);
+
+    byte[] ReadRawSector(int lba);
 
     byte[] ReadSector(int lba)
     {
