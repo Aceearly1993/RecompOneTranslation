@@ -391,13 +391,25 @@ public static class InstructionEmitter
 
             return;
         }
-
+        
         if (op == 0 && fn == 8)
         {
             Ds();
             if (rs == 31 || ctx.RaReturnJrs.Contains(pc))
             {
-                sb.AppendLine(ctx.Trail(ctrl, $"{indent}return;"));
+                if (ctx.LinkReturns.Count == 0)
+                {
+                    sb.AppendLine(ctx.Trail(ctrl, $"{indent}return;"));
+                }
+                else
+                {
+                    sb.AppendLine(ctx.Trail(ctrl, $"{indent}switch (c.RA)"));
+                    sb.AppendLine(ctx.Trail(ctrl, $"{indent}{{"));
+                    foreach (var entry in ctx.LinkReturns.OrderBy(a => a)) 
+                        sb.AppendLine(ctx.Trail(ctrl, $"{indent}    case 0x{entry:X8}u: goto L{entry:X8};"));
+                    sb.AppendLine(ctx.Trail(ctrl, $"{indent}    default: return;"));
+                    sb.AppendLine(ctx.Trail(ctrl, $"{indent}}}"));
+                }
             }
             else if (ctx.JumpTablesByJr.TryGetValue(pc, out var jtbl))
             {
@@ -447,6 +459,7 @@ public sealed class FunctionContext
     public bool DisasmComments;
     public Dictionary<uint, JumpTable> JumpTablesByJr = [];
     public HashSet<uint> RaReturnJrs = [];
+    public HashSet<uint> LinkReturns = [];
     public MipsInstruction[] AllInstructions = [];
     public Dictionary<uint, uint> Relocations = [];
 

@@ -63,11 +63,18 @@ internal sealed class DisplaySettingsSection : ISettingsSection
 
         ImGui.TextDisabled(Localization.T("settings.display.backend_running", Hle.GpuBackendFactory.Selected));
 
-        ImGui.Separator();
-        DrawFrameRate();
+        //some games may not need these so make it toglable by the game
+        if (Interp.Interp.Shown)
+        {
+            ImGui.Separator();
+            DrawFrameRate();
+        }
 
-        ImGui.Separator();
-        DrawPgxp();
+        if (Pgxp.Pgxp.Shown)
+        {
+            ImGui.Separator();
+            DrawPgxp();
+        }
     }
 
     static void DrawFrameRate()

@@ -202,7 +202,7 @@ public sealed class GlCore : IGpuBackend
     private GlDisplayRt? Classify()
     {
         if (_clsClipX0 == _env.ClipX0 && _clsClipY0 == _env.ClipY0 && _clsClipX1 == _env.ClipX1 &&
-            _clsClipY1 == _env.ClipY1 && _clsVersion == GpuHle.RectVersion)
+            _clsClipY1 == _env.ClipY1 && _clsVersion == GpuHle.ViewVersion)
         {
             if (_clsResult != null) _clsResult.Stamp = ++_rtStamp;
             return _clsResult;
@@ -212,7 +212,7 @@ public sealed class GlCore : IGpuBackend
         _clsClipY0 = _env.ClipY0;
         _clsClipX1 = _env.ClipX1;
         _clsClipY1 = _env.ClipY1;
-        _clsVersion = GpuHle.RectVersion;
+        _clsVersion = GpuHle.ViewVersion;
         _clsResult = ClassifySlow();
         return _clsResult;
     }
