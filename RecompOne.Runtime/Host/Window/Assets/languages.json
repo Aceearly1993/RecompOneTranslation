@@ -172,79 +172,105 @@
       "en": "Input",
       "pt-BR": "Controle",
       "es-419": "Control",
-      "ja-jp": "入力"
+      "ja-jp": "Input",
+      "zh-CN": "Input",
+      "fr-FR": "Input"
     },
     "menu.debug.input.record": {
       "en": "Record",
       "pt-BR": "Gravar",
       "es-419": "Grabar",
-      "ja-jp": "録画"
+      "ja-jp": "録画",
+      "zh-CN": "录制",
+      "fr-FR": "Record"
     },
     "menu.debug.input.stop_record": {
       "en": "Stop Recording",
       "pt-BR": "Parar Gravação",
       "es-419": "Detener Grabación",
-      "ja-jp": "録画を停止"
+      "ja-jp": "録画を停止",
+      "zh-CN": "停止录制",
+      "fr-FR": "Stop Recording"
     },
     "menu.debug.input.play": {
       "en": "Play",
       "pt-BR": "Reproduzir",
       "es-419": "Reproducir",
-      "ja-jp": "再生"
+      "ja-jp": "再生",
+      "zh-CN": "回放",
+      "fr-FR": "Play"
     },
     "menu.debug.input.empty": {
       "en": "no recordings",
       "pt-BR": "nenhuma gravação",
       "es-419": "sin grabaciones",
-      "ja-jp": "録画なし"
+      "ja-jp": "録画なし",
+      "zh-CN": "no recordings",
+      "fr-FR": "no recordings"
     },
     "menu.debug.input.idle": {
       "en": "idle",
       "pt-BR": "parado",
       "es-419": "inactivo",
-      "ja-jp": "待機中"
+      "ja-jp": "待機中",
+      "zh-CN": "idle",
+      "fr-FR": "idle"
     },
     "menu.debug.input.recording": {
       "en": "recording {0} - {1} frames",
       "pt-BR": "gravando {0} - {1} frames",
       "es-419": "grabando {0} - {1} frames",
-      "ja-jp": "録画中 {0} - {1} フレーム"
+      "ja-jp": "録画中 {0} - {1} フレーム",
+      "zh-CN": "录制中 {0} - {1} 帧",
+      "fr-FR": "recording {0} - {1} frames"
     },
     "menu.debug.input.playing": {
       "en": "playing {0} - {1}/{2}",
       "pt-BR": "reproduzindo {0} - {1}/{2}",
       "es-419": "reproduciendo {0} - {1}/{2}",
-      "ja-jp": "再生中 {0} - {1}/{2}"
+      "ja-jp": "再生中 {0} - {1}/{2}",
+      "zh-CN": "回放中 {0} - {1}/{2}",
+      "fr-FR": "playing {0} - {1}/{2}"
     },
     "panel.input_roll": {
       "en": "Input Roll",
       "pt-BR": "Rolo de Input",
       "es-419": "Rollo de Entrada",
-      "ja-jp": "入力ロール"
+      "ja-jp": "入力ロール",
+      "zh-CN": "Input Roll",
+      "fr-FR": "Input Roll"
     },
     "panel.input_roll.stop": {
       "en": "Stop",
       "pt-BR": "Parar",
       "es-419": "Detener",
-      "ja-jp": "停止"
+      "ja-jp": "停止",
+      "zh-CN": "停止",
+      "fr-FR": "Stop"
     },
     "panel.input_roll.window": {
       "en": "%d frames",
       "pt-BR": "%d frames",
       "es-419": "%d frames",
-      "ja-jp": "%d フレーム"
+      "ja-jp": "%d フレーム",
+      "zh-CN": "%d frames",
+      "fr-FR": "%d frames"
     },
     "panel.input_roll.follow": {
       "en": "Follow",
       "pt-BR": "Seguir",
       "es-419": "Seguir",
-      "ja-jp": "追従"
+      "ja-jp": "追従",
+      "zh-CN": "Follow",
+      "fr-FR": "Follow"
     },
     "panel.input_roll.pad2": {
       "en": "Pad 2",
       "pt-BR": "Pad 2",
       "es-419": "Pad 2",
-      "ja-jp": "パッド2"
+      "ja-jp": "パッド2",
+      "zh-CN": "Pad 2",
+      "fr-FR": "Pad 2"
     },
     "menu.debug.system": {
       "en": "System",
@@ -522,7 +548,9 @@
       "en": "Show FPS",
       "pt-BR": "Mostrar FPS",
       "es-419": "Mostrar FPS",
-      "ja-jp": "FPSを表示"
+      "ja-jp": "FPSを表示",
+      "zh-CN": "显示FPS",
+      "fr-FR": "Show FPS"
     },
     "theme.blue": {
       "en": "Blue",
@@ -663,112 +691,178 @@
     "settings.display.frame_rate": {
       "en": "Frame rate",
       "pt-BR": "Taxa de quadros",
-      "es-419": "Tasa de cuadros"
+      "es-419": "Tasa de cuadros",
+      "ja-JP": "フレームレート",
+      "zh-CN": "帧率",
+      "fr-FR": "Frame rate"
     },
     "settings.display.frame_rate_native": {
       "en": "Same as the game",
       "pt-BR": "Igual ao jogo",
-      "es-419": "Igual al juego"
+      "es-419": "Igual al juego",
+      "ja-JP": "Same as the game",
+      "zh-CN": "与原游戏相同",
+      "fr-FR": "Same as the game"
     },
     "settings.display.frame_rate_hint": {
       "en": "Display rate. above the game own frames are interpolated.",
       "pt-BR": "Taxa de exibição. acima da do jogo os quadros são interpolados.",
-      "es-419": "Tasa de pantalla. encima de la del juego los cuadros se interpolan."
+      "es-419": "Tasa de pantalla. encima de la del juego los cuadros se interpolan.",
+      "ja-JP": "Display rate. above the game own frames are interpolated.",
+      "zh-CN": "显示刷新率。超过原作游戏原生帧率的部分通过插值生成。",
+      "fr-FR": "Display rate. above the game own frames are interpolated."
     },
     "settings.display.frame_rate_needs_pgxp": {
       "en": "Needs PGXP memory tracking.",
       "pt-BR": "Precisa do rastreio de memória do PGXP.",
-      "es-419": "Necesita el rastreo de memoria de PGXP."
+      "es-419": "Necesita el rastreo de memoria de PGXP.",
+      "ja-JP": "Needs PGXP memory tracking.",
+      "zh-CN": "需要 PGXP 内存追踪。",
+      "fr-FR": "Needs PGXP memory tracking."
     },
     "settings.display.pgxp": {
       "en": "Geometry precision (PGXP)",
       "pt-BR": "Precisão de geometria (PGXP)",
-      "es-419": "Precisión de geometría (PGXP)"
+      "es-419": "Precisión de geometría (PGXP)",
+      "ja-JP": "Geometry precision (PGXP)",
+      "zh-CN": "几何精度 (PGXP)",
+      "fr-FR": "Geometry precision (PGXP)"
     },
     "settings.display.pgxp_enable": {
       "en": "Enable PGXP",
       "pt-BR": "Ativar PGXP",
-      "es-419": "Activar PGXP"
+      "es-419": "Activar PGXP",
+      "ja-JP": "Enable PGXP",
+      "zh-CN": "启用 PGXP",
+      "fr-FR": "Enable PGXP"
     },
     "settings.display.pgxp_enable_hint": {
       "en": "Recomputes the geometry transform in floating point, removing vertex jitter.",
       "pt-BR": "Recalcula a transformação de geometria em ponto flutuante, removendo o tremor dos vértices.",
-      "es-419": "Recalcula la transformación de geometría en punto flotante, eliminando el temblor de los vértices."
+      "es-419": "Recalcula la transformación de geometría en punto flotante, eliminando el temblor de los vértices.",
+      "ja-JP": "Recomputes the geometry transform in floating point, removing vertex jitter.",
+      "zh-CN": "以浮点精度重新计算几何变换，从而消除顶点抖动。",
+      "fr-FR": "Recomputes the geometry transform in floating point, removing vertex jitter."
     },
     "settings.display.pgxp_culling": {
       "en": "Culling correction",
       "pt-BR": "Correção de culling",
-      "es-419": "Corrección de culling"
+      "es-419": "Corrección de culling",
+      "ja-JP": "Culling correction",
+      "zh-CN": "剔除修正",
+      "fr-FR": "Culling correction"
     },
     "settings.display.pgxp_culling_hint": {
       "en": "Uses the precise coordinates for backface culling, so thin triangles stop disappearing. May hang games that rely on the original result.",
       "pt-BR": "Usa as coordenadas precisas no culling, então triângulos finos param de sumir. Pode travar jogos que dependem do resultado original.",
-      "es-419": "Usa las coordenadas precisas en el culling, así los triángulos finos dejan de desaparecer. Puede colgar juegos que dependan del resultado original."
+      "es-419": "Usa las coordenadas precisas en el culling, así los triángulos finos dejan de desaparecer. Puede colgar juegos que dependan del resultado original.",
+      "ja-JP": "Uses the precise coordinates for backface culling, so thin triangles stop disappearing. May hang games that rely on the original result.",
+      "zh-CN": "使用精确坐标进行背面剔除，从而避免细窄三角形消失的问题。但这可能会导致依赖原有剔除结果的游戏发生错误。",
+      "fr-FR": "Uses the precise coordinates for backface culling, so thin triangles stop disappearing. May hang games that rely on the original result."
     },
     "settings.display.pgxp_texture": {
       "en": "Perspective correct textures",
       "pt-BR": "Texturas com perspectiva correta",
-      "es-419": "Texturas con perspectiva correcta"
+      "es-419": "Texturas con perspectiva correcta",
+      "ja-JP": "Perspective correct textures",
+      "zh-CN": "透视校正纹理",
+      "fr-FR": "Perspective correct textures"
     },
     "settings.display.pgxp_texture_hint": {
       "en": "Interpolates texture coordinates with depth, removing the warping on large angled surfaces.",
       "pt-BR": "Interpola as coordenadas de textura com profundidade, removendo a distorção em superfícies grandes em ângulo.",
-      "es-419": "Interpola las coordenadas de textura con profundidad, eliminando la distorsión en superficies grandes en ángulo."
+      "es-419": "Interpola las coordenadas de textura con profundidad, eliminando la distorsión en superficies grandes en ángulo.",
+      "ja-JP": "Interpolates texture coordinates with depth, removing the warping on large angled surfaces.",
+      "zh-CN": "结合深度信息对纹理坐标进行插值，从而消除大倾角表面上的扭曲现象。",
+      "fr-FR": "Interpolates texture coordinates with depth, removing the warping on large angled surfaces."
     },
     "settings.display.pgxp_vertex_cache": {
       "en": "Vertex cache",
       "pt-BR": "Cache de vértices",
-      "es-419": "Caché de vértices"
+      "es-419": "Caché de vértices",
+      "ja-JP": "Vertex cache",
+      "zh-CN": "顶点缓存",
+      "fr-FR": "Vertex cache"
     },
     "settings.display.pgxp_vertex_cache_hint": {
       "en": "Recovers precision for vertices the game stored in memory. Can pick the wrong vertex when two land on the same pixel, which shows up as broken geometry.",
       "pt-BR": "Recupera precisão de vértices que o jogo guardou na memória. Pode pegar o vértice errado quando dois caem no mesmo pixel, o que aparece como geometria quebrada.",
-      "es-419": "Recupera precisión de vértices que el juego guardó en memoria. Puede tomar el vértice equivocado cuando dos caen en el mismo píxel, lo que se ve como geometría rota."
+      "es-419": "Recupera precisión de vértices que el juego guardó en memoria. Puede tomar el vértice equivocado cuando dos caen en el mismo píxel, lo que se ve como geometría rota.",
+      "ja-JP": "Recovers precision for vertices the game stored in memory. Can pick the wrong vertex when two land on the same pixel, which shows up as broken geometry.",
+      "zh-CN": "恢复游戏存储在内存中的顶点精度。当两个顶点落在同一个像素上时，可能会选中错误的顶点，从而导致几何形状破损。",
+      "fr-FR": "Recovers precision for vertices the game stored in memory. Can pick the wrong vertex when two land on the same pixel, which shows up as broken geometry."
     },
     "settings.display.pgxp_memory": {
       "en": "Memory tracking",
       "pt-BR": "Rastreio de memória",
-      "es-419": "Rastreo de memoria"
+      "es-419": "Rastreo de memoria",
+      "ja-JP": "Memory tracking",
+      "zh-CN": "内存追踪",
+      "fr-FR": "Memory tracking"
     },
     "settings.display.pgxp_memory_hint": {
       "en": "Tracks vertices stored in RAM.",
       "pt-BR": "Rastreia vértices guardados na RAM.",
-      "es-419": "Rastrea vértices guardados en la RAM."
+      "es-419": "Rastrea vértices guardados en la RAM.",
+      "ja-JP": "Tracks vertices stored in RAM.",
+      "zh-CN": "追踪存储在 RAM 中的顶点。",
+      "fr-FR": "Tracks vertices stored in RAM."
     },
     "settings.display.pgxp_cache_w": {
       "en": "Cache depth",
       "pt-BR": "Profundidade do cache",
-      "es-419": "Profundidad del caché"
+      "es-419": "Profundidad del caché",
+      "ja-JP": "Cache depth",
+      "zh-CN": "缓存深度",
+      "fr-FR": "Cache depth"
     },
     "settings.display.pgxp_cache_w_hint": {
       "en": "Uses depth from the cache too, not only just position.",
       "pt-BR": "Usa também a profundidade do cache, não apenas a posição.",
-      "es-419": "Usa también la profundidad del caché, no solo la posición."
+      "es-419": "Usa también la profundidad del caché, no solo la posición.",
+      "ja-JP": "Uses depth from the cache too, not only just position.",
+      "zh-CN": "在缓存中不仅使用位置信息，还使用深度信息。",
+      "fr-FR": "Uses depth from the cache too, not only just position."
     },
     "settings.display.pgxp_cpu": {
       "en": "CPU tracking",
       "pt-BR": "Rastreio de CPU",
-      "es-419": "Rastreo de CPU"
+      "es-419": "Rastreo de CPU",
+      "ja-JP": "CPU tracking}",
+      "zh-CN": "CPU 追踪",
+      "fr-FR": "CPU tracking"
     },
     "settings.display.pgxp_cpu_hint": {
       "en": "Follows the precise value through the game's own loads and stores, so geometry the game buffers in memory keeps its precision.",
       "pt-BR": "Acompanha o valor preciso pelos loads e stores do próprio jogo, para que a geometria que ele guarda na memória mantenha a precisão.",
-      "es-419": "Sigue el valor preciso a través de los loads y stores del propio juego, para que la geometría que guarda en memoria mantenga la precisión."
+      "es-419": "Sigue el valor preciso a través de los loads y stores del propio juego, para que la geometría que guarda en memoria mantenga la precisión.",
+      "ja-JP": "Follows the precise value through the game's own loads and stores, so geometry the game buffers in memory keeps its precision.",
+      "zh-CN": "在游戏自身的加载与存储操作过程中追踪精确数值，从而确保游戏缓存在内存中的几何数据保持其精度。",
+      "fr-FR": "Follows the precise value through the game's own loads and stores, so geometry the game buffers in memory keeps its precision."
     },
     "settings.display.pgxp_tolerance": {
       "en": "Geometry tolerance",
       "pt-BR": "Tolerância de geometria",
-      "es-419": "Tolerancia de geometría"
+      "es-419": "Tolerancia de geometría",
+      "ja-JP": "Geometry tolerance",
+      "zh-CN": "几何公差",
+      "fr-FR": "Geometry tolerance"
     },
     "settings.display.pgxp_tolerance_hint": {
       "en": "Rejects precise coordinates that differ from the original by more than this, which keeps 2D drawing untouched. Off applies precision everywhere.",
       "pt-BR": "Rejeita coordenadas precisas que diferem da original por mais que isto, o que mantém o desenho 2D intocado. Desligado aplica precisão em tudo.",
-      "es-419": "Rechaza coordenadas precisas que difieran de la original más que esto, lo que mantiene el dibujo 2D intacto. Apagado aplica precisión en todo."
+      "es-419": "Rechaza coordenadas precisas que difieran de la original más que esto, lo que mantiene el dibujo 2D intacto. Apagado aplica precisión en todo.",
+      "ja-JP": "Rejects precise coordinates that differ from the original by more than this, which keeps 2D drawing untouched. Off applies precision everywhere.",
+      "zh-CN": "若精确坐标与原始坐标的偏差超过此值，则予以拒绝，从而保持二维图纸不变。设置为“关”（Off）则在各处均应用该精度设置。",
+      "fr-FR": "Rejects precise coordinates that differ from the original by more than this, which keeps 2D drawing untouched. Off applies precision everywhere."
     },
     "settings.display.pgxp_tolerance_off": {
       "en": "off",
       "pt-BR": "desligado",
-      "es-419": "apagado"
+      "es-419": "apagado",
+      "ja-JP": "off",
+      "zh-CN": "关闭",
+      "fr-FR": "off"
     },
     "settings.audio": {
       "en": "Audio",
@@ -838,31 +932,41 @@
       "en": "Controller type",
       "pt-BR": "Tipo de controle",
       "es-419": "Tipo de control",
-      "ja-jp": "コントローラの種類"
+      "ja-jp": "コントローラの種類",
+      "zh-CN": "游戏控制器种类",
+      "fr-FR": "Controller type"
     },
     "settings.input.kind.digital": {
       "en": "Digital Pad",
       "pt-BR": "Digital Pad",
       "es-419": "Digital Pad",
-      "ja-jp": "デジタルパッド"
+      "ja-jp": "デジタルパッド",
+      "zh-CN": "Digital Pad",
+      "fr-FR": "Digital Pad"
     },
     "settings.input.kind.analog": {
       "en": "DualShock (Analog)",
       "pt-BR": "DualShock (Analógico)",
       "es-419": "DualShock (Analógico)",
-      "ja-jp": "DualShock (アナログ)"
+      "ja-jp": "DualShock (アナログ)",
+      "zh-CN": "DualShock (类比摇杆)",
+      "fr-FR": "DualShock (Analog)"
     },
     "settings.input.kind.digital.hint": {
       "en": "ID 41h, buttons only",
       "pt-BR": "ID 41h, apenas botões",
       "es-419": "ID 41h, solo botones",
-      "ja-jp": "ID 41h、ボタンのみ"
+      "ja-jp": "ID 41h、ボタンのみ",
+      "zh-CN": "ID 41h, 只有按键",
+      "fr-FR": "ID 41h, buttons only"
     },
     "settings.input.kind.analog.hint": {
       "en": "ID 73h, adds both sticks and L3/R3",
       "pt-BR": "ID 73h, adiciona os dois analógicos e L3/R3",
       "es-419": "ID 73h, añade ambos sticks y L3/R3",
-      "ja-jp": "ID 73h、両スティックとL3/R3を追加"
+      "ja-jp": "ID 73h、両スティックとL3/R3を追加",
+      "zh-CN": "ID 73h, 追加左右摇杆和 L3/R3",
+      "fr-FR": "ID 73h, adds both sticks and L3/R3"
     },
     "settings.input.keyboard": {
       "en": "Keyboard",
@@ -892,14 +996,16 @@
       "en": "Automatic",
       "pt-BR": "Automático",
       "es-419": "Automático",
-      "ja-JP": "ゲームパッド",
-      "fr-FR": "Manette"
+      "ja-JP": "Automatic",
+      "zh-CN": "自动",
+      "fr-FR": "Automatic"
     },
     "settings.input.device.missing": {
       "en": "Saved controller not connected",
       "pt-BR": "Controle salvo não conectado",
       "es-419": "Control guardado no conectado",
       "ja-JP": "ゲームパッドが接続されていません",
+      "zh-CN": "没有检测到已保存配置的手柄",
       "fr-FR": "Manette sauvegardée non connectée"
     },
     "settings.input.device.refresh": {
@@ -907,6 +1013,7 @@
       "pt-BR": "Atualizar",
       "es-419": "Actualizar",
       "ja-JP": "再読み込み",
+      "zh-CN": "重新检测",
       "fr-FR": "Actualiser"
     },
     "settings.input.pad": {
@@ -1161,7 +1268,9 @@
       "en": "Analog sticks",
       "pt-BR": "Analógicos",
       "es-419": "Sticks analógicos",
-      "ja-jp": "アナログスティック"
+      "ja-jp": "アナログスティック",
+      "zh-CN": "类比摇杆",
+      "fr-FR": "Analog sticks"
     }
   }
 }
