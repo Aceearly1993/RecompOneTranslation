@@ -61,7 +61,7 @@ public static class GpuPrims
     {
         public int Next;
         public int Count;
-        public bool UseImage, SemiTrans, Raw, Gouraud;
+        public bool UseImage, SemiTrans, Raw, Gouraud, QuantizedAlpha;
         public int Image, Blend;
         public PrimVertex V0, V1, V2, V3;
     }
@@ -121,12 +121,13 @@ public static class GpuPrims
     }
 
     public static void Quad(int order, in PrimVertex a, in PrimVertex b, in PrimVertex c, in PrimVertex d,
-        int image = -1, bool semiTrans = false, int blend = 0, bool raw = true, bool gouraud = false)
+        int image = -1, bool semiTrans = false, int blend = 0, bool raw = true, bool gouraud = false, bool quantizedAlpha = false)
     {
         var i = Alloc(order, image, semiTrans, blend, raw, gouraud);
         if (i < 0) return;
         ref var e = ref _entries[i];
         e.Count = 4;
+        e.QuantizedAlpha = quantizedAlpha;
         e.V0 = a;
         e.V1 = b;
         e.V2 = c;
@@ -135,14 +136,14 @@ public static class GpuPrims
 
     public static void Sprite(int order, int image, float x, float y, float w, float h,
         bool semiTrans = false, int blend = 0,
-        float u0 = 0f, float v0 = 0f, float u1 = 1f, float v1 = 1f)
+        float u0 = 0f, float v0 = 0f, float u1 = 1f, float v1 = 1f, bool quantizedAlpha = false)
     {
         Quad(order,
             new PrimVertex(x, y, u0, v0),
             new PrimVertex(x + w, y, u1, v0),
             new PrimVertex(x, y + h, u0, v1),
             new PrimVertex(x + w, y + h, u1, v1),
-            image, semiTrans, blend);
+            image, semiTrans, blend, quantizedAlpha: quantizedAlpha);
     }
 
     private static int Alloc(int order, int image, bool semiTrans, int blend, bool raw, bool gouraud)
@@ -160,6 +161,7 @@ public static class GpuPrims
         e.Blend = blend & 3;
         e.Raw = raw;
         e.Gouraud = gouraud;
+        e.QuantizedAlpha = false;
 
         if (_heads[order] < 0)
         {
@@ -183,7 +185,7 @@ public static class GpuPrims
         {
             ref var e = ref _entries[i];
             gpu.EmitPrim(e.Count, in e.V0, in e.V1, in e.V2, in e.V3,
-                e.UseImage, e.Image, e.SemiTrans, e.Raw, e.Gouraud, e.Blend);
+                e.UseImage, e.Image, e.SemiTrans, e.Raw, e.Gouraud, e.Blend, e.QuantizedAlpha);
         }
     }
 }

@@ -114,7 +114,6 @@ public static class Interrupts
         {
             DrainPending(cpu, mem);
             BiosB.PumpCardEvents(cpu, mem);
-            Sdk.LibCd.Pump();
             Runtime.Cd?.AdvanceStreaming();
         }
         finally

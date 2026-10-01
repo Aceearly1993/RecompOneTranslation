@@ -69,6 +69,13 @@ public sealed partial class Gpu
 
                 if (found)
                 {
+                    if (!validW && WithinTolerance(px, py, vw) && Pgxp.PgxpGpu.TryGetVertex(vw, seq, true, out var cx, out var cy, out var cw, out var cacheW, out var cacheSeq, out var cacheTransform) && cacheW && Math.Abs(cx - px) <= 0.25f && Math.Abs(cy - py) <= 0.25f && (transform == 0 || cacheTransform == 0 || transform == cacheTransform)) //holy line
+                    {
+                        pw = cw;
+                        validW = true;
+                        seq = cacheSeq;
+                        transform = cacheTransform != 0 ? cacheTransform : transform;
+                    }
                     v[i].Pw = pw;
                     v[i].Transform = transform != 0 ? transform : -1;
                     seqs[i] = seq;
@@ -92,6 +99,8 @@ public sealed partial class Gpu
                 else if (i == 1) SetTexpageFromWord((uvw >> 16) & 0xFFFF);
             }
         }
+
+        if (Pgxp.Pgxp.Enabled) ResolveAmbiguous(v, words, seqs, n);
 
         //dispatch the render event for prims
         if (Event.HasAnyListeners<RenderPrimEvent>())
@@ -121,19 +130,20 @@ public sealed partial class Gpu
             if (e.Skip) return;
             for (var i = 0; i < n; i++)
             {
+                var dx = e.X[i] - v[i].X;
+                var dy = e.Y[i] - v[i].Y;
                 v[i].X = e.X[i];
                 v[i].Y = e.Y[i];
+                if (v[i].Precise)
+                {
+                    v[i].Px += dx;
+                    v[i].Py += dy;
+                }
             }
         }
 
-        if (Pgxp.Pgxp.Enabled) ResolveAmbiguous(v, words, seqs, n);
-
-        var invalidW = false;
-        for (var i = 0; i < n; i++)
-            if (!v[i].PreciseW || v[i].Pw <= 0f) invalidW = true;
-
-        HleTri(v[0], v[1], v[2], invalidW, tex, gouraud, semi, raw, clut);
-        if (quad) HleTri(v[1], v[2], v[3], invalidW, tex, gouraud, semi, raw, clut);
+        HleTri(v[0], v[1], v[2], HasInvalidW(v[0], v[1], v[2]), tex, gouraud, semi, raw, clut);
+        if (quad) HleTri(v[1], v[2], v[3], HasInvalidW(v[1], v[2], v[3]), tex, gouraud, semi, raw, clut);
     }
 
     private void DrawRectangle()
@@ -327,5 +337,10 @@ public sealed partial class Gpu
             v[i].PreciseW = validW;
             v[i].Transform = transform != 0 ? transform : -1;
         }
+    }
+
+    private static bool HasInvalidW(in Vert a, in Vert b, in Vert c)
+    {
+        return !a.PreciseW || !b.PreciseW || !c.PreciseW || !float.IsFinite(a.Pw) || !float.IsFinite(b.Pw) || !float.IsFinite(c.Pw) || a.Pw <= 0f || b.Pw <= 0f || c.Pw <= 0f;
     }
 }

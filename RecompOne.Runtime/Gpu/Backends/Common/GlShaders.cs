@@ -91,7 +91,7 @@ internal static class GlShaders
                                      if ((inTexpage & 0x8000) != 0) {
                                          texMode = 4;
                                      } else if ((inTexpage & 0x4000) != 0) {
-                                         texMode = 5;
+                                         texMode = (inTexpage & 0x800) != 0 ? 7 : 5;
                                          vUV = inUV;
                                      } else if ((inTexpage & 0x2000) != 0) {
                                          texMode = 6;
@@ -159,6 +159,16 @@ internal static class GlShaders
                                      if (texMode == 4) {
                                          FragColor = vec4(quant5(ivec3(vColor.rgb * 255.0 + 0.5)), uSetMask);
                                          BlendColor = uBlend;
+                                         return;
+                                     }
+
+                                     if (texMode == 7) {
+                                         vec4 img = texture(uExtTex, vUV);
+                                         if (img.a <= 0.0) discard;
+                                         vec3 dst = texelFetch(uDest, ivec2(gl_FragCoord.xy), 0).rgb;
+                                         vec3 rgb = mix(dst, img.rgb, img.a);
+                                         FragColor = vec4(floor(rgb * 31.0 + 0.5) / 31.0, uSetMask);
+                                         BlendColor = uBlendOpaque;
                                          return;
                                      }
 
@@ -341,7 +351,7 @@ internal static class GlShaders
                                         if (bitAt(tp, 32768.0) > 0.5) {
                                             vTexMode = 4.0;
                                         } else if (bitAt(tp, 16384.0) > 0.5) {
-                                            vTexMode = 5.0;
+                                            vTexMode = bitAt(tp, 2048.0) > 0.5 ? 7.0 : 5.0;
                                         } else if (bitAt(tp, 8192.0) > 0.5) {
                                             vTexMode = 6.0;
                                         } else {
@@ -422,6 +432,14 @@ internal static class GlShaders
                                         vec3 rgb;
                                         float stp;
                                         float mask;
+
+                                        if (vTexMode > 6.5) {
+                                            vec4 img = texture2D(uExtTex, vUV);
+                                            if (img.a <= 0.0) discard;
+                                            vec3 blended = mix(dstTexel.rgb, img.rgb, img.a);
+                                            gl_FragColor = vec4(floor(blended * 31.0 + 0.5) / 31.0, uSetMask);
+                                            return;
+                                        }
 
                                         if (vTexMode > 3.5 && vTexMode < 4.5) {
                                             rgb = vColor.rgb * 255.0;

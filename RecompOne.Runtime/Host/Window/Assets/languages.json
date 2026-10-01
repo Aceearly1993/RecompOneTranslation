@@ -406,6 +406,21 @@
       "zh-CN": "Notice",
       "fr-FR": "Attention"
     },
+    "crash.title": {
+      "en": "OOPS Something gone wrong!",
+      "pt-BR": "OOPS! Algo deu errado!",
+      "es-419": "¡OOPS! ¡Algo salió mal!"
+    },
+    "crash.body": {
+      "en": "The recomp crashed! but dont worry! the crash log is available at {0}, send this for the responsable team for this recomp",
+      "pt-BR": "A recomp crashou, mas não se preocupe! O log do crash está disponível em {0}. Envie-o para a equipe responsável por este recomp.",
+      "es-419": "¡El recomp se cerró inesperadamente! No te preocupes: el registro del fallo está disponible en {0}. Envíalo al equipo responsable de este recomp."
+    },
+    "crash.error": {
+      "en": "Error: {0}",
+      "pt-BR": "Erro: {0}",
+      "es-419": "Error: {0}"
+    },
     "settings.title": {
       "en": "Settings",
       "pt-BR": "Configurações",

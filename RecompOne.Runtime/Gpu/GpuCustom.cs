@@ -17,7 +17,7 @@ public sealed partial class Gpu
     }
 
     public void EmitPrim(int count, in PrimVertex a, in PrimVertex b, in PrimVertex c, in PrimVertex d,
-        bool useImage, int image, bool semiTrans, bool raw, bool gouraud, int blend)
+        bool useImage, int image, bool semiTrans, bool raw, bool gouraud, int blend, bool quantizedAlpha = false)
     {
         if (!HleOn || count < 3) return;
 
@@ -33,6 +33,7 @@ public sealed partial class Gpu
             TPage = (ushort)((blend & 3) << 5),
             Clut = 0,
             UseImage = useImage,
+            QuantizedAlpha = quantizedAlpha,
             Image = image
         };
 

@@ -13,6 +13,7 @@ internal sealed class TransformInterp
     private const float OrdPenalty = 64f;
     private const float KeyPenalty = 2048f;
     private const float UvPenalty = 48f;
+    private const int PageCount = 32; //performance improv
     
     private struct Pose
     {
@@ -23,15 +24,16 @@ internal sealed class TransformInterp
         public float H, OFX, OFY;
     }
     
-    private readonly record struct Candidate(int Current, int Previous, float Score);
-    
-    private readonly List<Candidate> _candidates = [];
     private Pose[] _poses = [];
     private bool[] _taken = [];
     private int[] _bestCur = [];
     private int[] _bestPrev = [];
     private float[] _scoreCur = [];
     private float[] _scorePrev = [];
+    private readonly List<int>[] _previousByPage = CreatePageBuckets(); 
+    private readonly List<int> _pageCandidates = []; //performance improv, the ida is to instead of lookup poly by poly check only plausible candidates
+    private int[] _candidateMarks = [];
+    private int _candidateGeneration;
     
     public int Matched { get; private set; }
     
@@ -155,39 +157,38 @@ internal sealed class TransformInterp
     
     private void Assign(FrameGraph current, FrameGraph previous)
     {
-        _candidates.Clear();
-        
         var here = current.Transforms.Count;
         var there = previous.Transforms.Count;
-        
+
+        EnsureBestCapacity(here, there);
+        ResetBest(here, there);
+        BuildPageIndex(previous);
+
         for (var i = 0; i < here; i++)
-        for (var j = 0; j < there; j++)
         {
-            if (!Score(current.Transforms[i], previous.Transforms[j], out var score)) continue;
-            _candidates.Add(new Candidate(i, j, score));
-        }
-        
-        if (_bestCur.Length < here) { _bestCur = new int[here]; _scoreCur = new float[here]; }
-        if (_bestPrev.Length < there) { _bestPrev = new int[there]; _scorePrev = new float[there]; }
-        
-        for (var i = 0; i < here; i++) { _bestCur[i] = -1; _scoreCur[i] = float.MaxValue; }
-        for (var j = 0; j < there; j++) { _bestPrev[j] = -1; _scorePrev[j] = float.MaxValue; }
-        
-        foreach (var candidate in _candidates)
-        {
-            if (candidate.Score < _scoreCur[candidate.Current])
+            var currentGroup = current.Transforms[i];
+            var pageCount = AddPageCandidates(currentGroup.Pages);
+            for (var candidateIndex = 0; candidateIndex < pageCount; candidateIndex++)
             {
-                _scoreCur[candidate.Current] = candidate.Score;
-                _bestCur[candidate.Current] = candidate.Previous;
-            }
-            
-            if (candidate.Score < _scorePrev[candidate.Previous])
-            {
-                _scorePrev[candidate.Previous] = candidate.Score;
-                _bestPrev[candidate.Previous] = candidate.Current;
+                var j = _pageCandidates[candidateIndex];
+                var previousGroup = previous.Transforms[j];
+                if (!CanMatch(in currentGroup, in previousGroup)) continue;
+                if (!Score(in currentGroup, in previousGroup, out var score)) continue;
+
+                if (score < _scoreCur[i])
+                {
+                    _scoreCur[i] = score;
+                    _bestCur[i] = j;
+                }
+
+                if (score < _scorePrev[j])
+                {
+                    _scorePrev[j] = score;
+                    _bestPrev[j] = i;
+                }
             }
         }
-        
+
         for (var i = 0; i < here; i++)
         {
             var j = _bestCur[i];
@@ -196,6 +197,93 @@ internal sealed class TransformInterp
             Accept(current, previous, i, j);
         }
 
+    }
+
+    private static List<int>[] CreatePageBuckets()
+    {
+        var buckets = new List<int>[PageCount];
+        for (var i = 0; i < buckets.Length; i++) buckets[i] = [];
+        return buckets;
+    }
+
+    private void BuildPageIndex(FrameGraph previous)
+    {
+        foreach (var bucket in _previousByPage) bucket.Clear();
+
+        for (var index = 0; index < previous.Transforms.Count; index++)
+        {
+            var pages = previous.Transforms[index].Pages;
+            while (pages != 0)
+            {
+                var page = System.Numerics.BitOperations.TrailingZeroCount(pages);
+                _previousByPage[page].Add(index);
+                pages &= pages - 1;
+            }
+        }
+
+        if (_candidateMarks.Length < previous.Transforms.Count)
+            _candidateMarks = new int[previous.Transforms.Count];
+    }
+
+    private int AddPageCandidates(uint pages)
+    {
+        _pageCandidates.Clear();
+        if (pages == 0) return 0;
+
+        if (++_candidateGeneration == int.MaxValue)
+        {
+            Array.Clear(_candidateMarks);
+            _candidateGeneration = 1;
+        }
+
+        var pageBits = pages;
+        while (pageBits != 0)
+        {
+            var page = System.Numerics.BitOperations.TrailingZeroCount(pageBits);
+            foreach (var index in _previousByPage[page])
+            {
+                if (_candidateMarks[index] == _candidateGeneration) continue;
+                _candidateMarks[index] = _candidateGeneration;
+                _pageCandidates.Add(index);
+            }
+
+            pageBits &= pageBits - 1;
+        }
+
+        if (BitCount(pages) > 1) _pageCandidates.Sort();
+        return _pageCandidates.Count;
+    }
+
+    private static int BitCount(uint value) => System.Numerics.BitOperations.PopCount(value);
+
+    private void EnsureBestCapacity(int here, int there)
+    {
+        if (_bestCur.Length < here)
+        {
+            _bestCur = new int[here];
+            _scoreCur = new float[here];
+        }
+
+        if (_bestPrev.Length < there)
+        {
+            _bestPrev = new int[there];
+            _scorePrev = new float[there];
+        }
+    }
+
+    private void ResetBest(int here, int there)
+    {
+        for (var i = 0; i < here; i++)
+        {
+            _bestCur[i] = -1;
+            _scoreCur[i] = float.MaxValue;
+        }
+
+        for (var i = 0; i < there; i++)
+        {
+            _bestPrev[i] = -1;
+            _scorePrev[i] = float.MaxValue;
+        }
     }
     
     private void Accept(FrameGraph current, FrameGraph previous, int index, int partner)
@@ -226,18 +314,21 @@ internal sealed class TransformInterp
         Matched++;
     }
     
-    private static bool Score(in TransformRecord current, in TransformRecord previous, out float score)
+    private static bool CanMatch(in TransformRecord current, in TransformRecord previous)
     {
-        score = float.MaxValue;
-        
         if ((current.Pages & previous.Pages) == 0u) return false;
-        
+
         var few = Math.Min(current.Tris, previous.Tris);
         var many = Math.Max(current.Tris, previous.Tris);
         if (many > few * 2) return false;
-        
-        if (Determinant(in current) * Determinant(in previous) < 0f) return false;
+
         if (current.H != previous.H) return false;
+        return Determinant(in current) * Determinant(in previous) >= 0f;
+    }
+
+    private static bool Score(in TransformRecord current, in TransformRecord previous, out float score)
+    {
+        score = float.MaxValue;
         
         var dx = current.TX - (previous.TX + previous.Vx);
         var dy = current.TY - (previous.TY + previous.Vy);

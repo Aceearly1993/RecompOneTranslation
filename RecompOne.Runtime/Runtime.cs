@@ -213,7 +213,8 @@ public static class Runtime
         
         thread.Start();
         
-        while (!_gameDone)
+        while (!_gameDone || HostWindow.Ready && (Host.Window.CrashPopup.IsPending ||
+                                                   Host.Window.PopupManager.Get<Host.Window.CrashPopup>()?.IsOpen == true))
             PresentLoop();
     }
     
@@ -233,6 +234,7 @@ public static class Runtime
             catch (Exception e)
             {
                 Console.Error.WriteLine($"[Runtime] runtime has crashed: {e}");
+                Host.GpuJobs.Run(() => Host.Window.CrashPopup.Report(e));
                 break;
             }
         
@@ -280,7 +282,13 @@ public static class Runtime
         
         for (var i = 0; i < frames; i++)
         {
-            if (!interp.Affordable(i)) break;
+            if (!interp.Affordable(i))
+            {
+                interp.ComposeEndpoint();
+                HostWindow.Compose(Gpu);
+                Host.GpuJobs.Drain();
+                break;
+            }
             
             interp.Compose(i);
             Pace(pace);

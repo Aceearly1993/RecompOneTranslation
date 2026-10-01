@@ -22,6 +22,7 @@ public sealed class PSMemory : IMemory
     private CdController? _cd;
 
     public ReadOnlySpan<byte> Ram => _ram;
+    internal ReadOnlyMemory<byte> RamBuffer => _ram;
 
     public bool TryWords(uint address, int count, out ReadOnlySpan<uint> words)
     {
@@ -37,8 +38,6 @@ public sealed class PSMemory : IMemory
         words = MemoryMarshal.Cast<byte, uint>(_ram.AsSpan((int)off, count * 4));
         return true;
     }
-
-    internal byte[] RamBuffer => _ram;
 
     //memory can be frozen for debuging reasons
     private readonly bool[] _frozen;

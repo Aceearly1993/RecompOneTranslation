@@ -56,6 +56,7 @@ public sealed class GlCore : IGpuBackend
     private int _vdX0, _vdY0, _vdX1, _vdY1;
     private bool _kTransparent;
     private int _kImage = -1;
+    private bool _kQuantizedAlpha;
     private int _kBlend, _kSetMask, _kCheckMask;
     private int _kTwAndX, _kTwAndY, _kTwOrX, _kTwOrY;
     private int _kClipX0, _kClipY0, _kClipX1, _kClipY1;
@@ -385,7 +386,7 @@ public sealed class GlCore : IGpuBackend
         var blend = f.BlendMode;
         var image = f.UseImage ? f.Image : -1;
         var target = Classify();
-        if (_count > 0 && (target != _kTarget || !DesiredMatches(transparent, blend, image))) Flush();
+        if (_count > 0 && (target != _kTarget || _kQuantizedAlpha || f.QuantizedAlpha || !DesiredMatches(transparent, blend, image))) Flush();
         if (_count + vertsNeeded > MaxVerts) Flush();
         CheckTextureFeedback(f);
 
@@ -393,6 +394,7 @@ public sealed class GlCore : IGpuBackend
 
         _kTarget = target;
         _kImage = image;
+        _kQuantizedAlpha = f.QuantizedAlpha;
         _kTransparent = transparent;
         _kBlend = blend;
         _kSetMask = _env.SetMask ? 1 : 0;
@@ -530,7 +532,7 @@ public sealed class GlCore : IGpuBackend
     {
         var raw = f.Textured && f.RawTexture;
         float cr = raw ? 128f : v.R, cg = raw ? 128f : v.G, cb = raw ? 128f : v.B;
-        var tpage = f.UseImage ? 0x4000 : f.Textured ? f.TPage & 0x1FF : 0x8000;
+        var tpage = f.UseImage ? (f.QuantizedAlpha ? 0x4800 : 0x4000) : f.Textured ? f.TPage & 0x1FF : 0x8000;
         if (dither && _pendingRepTex == 0) tpage |= 0x400;
         if (_pendingRepTex != 0) tpage |= 0x2000;
         else if (_pendingRepClut != 0) tpage |= 0x1000;
@@ -800,7 +802,7 @@ public sealed class GlCore : IGpuBackend
         var readY = Math.Max(0, ry0 * s);
         var readW = Math.Max(0, (rx1 - rx0 + 1) * s);
         var readH = Math.Max(0, (ry1 - ry0 + 1) * s);
-        var needDest = _legacy || _kCheckMask != 0;
+        var needDest = _legacy || _kCheckMask != 0 || _kQuantizedAlpha;
         if (needDest)
         {
             destTex = _vram.BeginDestRead(destTex, destW, destH, readX, readY, readW, readH);

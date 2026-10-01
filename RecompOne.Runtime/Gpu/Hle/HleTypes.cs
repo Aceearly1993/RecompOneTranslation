@@ -18,6 +18,7 @@ public struct PrimFlags
     public ushort Clut;
     public int OtIndex;
     public bool UseImage;
+    public bool QuantizedAlpha;
     public int Image;
 
     public readonly int BlendMode => (TPage >> 5) & 3;

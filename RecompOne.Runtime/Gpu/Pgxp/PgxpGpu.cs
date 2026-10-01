@@ -153,17 +153,40 @@ public static class PgxpGpu
     public static bool TryGetVertex(uint packed, uint hintSeq, bool hasHint, out float x, out float y, out float w,
         out bool validW, out uint seq, out int transform)
     {
-        validW = true;
-        if (TryMatch(in PgxpGte.Sxy2, packed, out x, out y, out w, out seq, out transform)) return true;
-        if (TryMatch(in PgxpGte.Sxy1, packed, out x, out y, out w, out seq, out transform)) return true;
-        if (TryMatch(in PgxpGte.Sxy0, packed, out x, out y, out w, out seq, out transform)) return true;
+        validW = false;
+        x = y = 0f;
+        w = 1f;
+        seq = 0u;
+        transform = 0;
+        var found = false;
+        var ambiguous = false;
+        var bestDistance = uint.MaxValue;
+        for (var i = 0; i < 3; i++)
+        {
+            ref readonly var candidate = ref (i == 0 ? ref PgxpGte.Sxy2 : ref (i == 1 ? ref PgxpGte.Sxy1 : ref PgxpGte.Sxy0));
+            if (!TryMatch(in candidate, packed, out var cx, out var cy, out var cw, out var cv, out var cs, out var ct)) continue;
+            var distance = hasHint ? Distance(cs, hintSeq) : 0u;
+            if (hasHint && distance > SeqWindow) continue;
+            if (!found || distance < bestDistance)
+            {
+                found = true;
+                ambiguous = false;
+                bestDistance = distance;
+                x = cx; y = cy; w = cw; validW = cv; seq = cs; transform = ct;
+            }
+            else if (distance == bestDistance && (x != cx || y != cy || w != cw || transform != ct))
+            {
+                ambiguous = true;
+            }
+        }
+        if (found && !ambiguous) return true;
 
         if (!Pgxp.VertexCache || !TryCache(packed, hintSeq, hasHint, out x, out y, out w, out seq, out transform)) return false;
         
-        validW = Pgxp.CacheW && w > 0f;
+        validW = Pgxp.CacheW && float.IsFinite(w) && w > 0f;
         return true;
     }
-    private static bool TryMatch(in PgxpValue value, uint packed, out float x, out float y, out float w, out uint seq,
+    private static bool TryMatch(in PgxpValue value, uint packed, out float x, out float y, out float w, out bool validW, out uint seq,
         out int transform)
     {
         x = 0f;
@@ -172,11 +195,13 @@ public static class PgxpGpu
         seq = 0u;
         transform = 0;
         
-        if (!PgxpFlags.Matches(in value, packed)) return false;
+        validW = false;
+        if (!PgxpFlags.Matches(in value, packed) || !float.IsFinite(value.X) || !float.IsFinite(value.Y)) return false;
         
         x = value.X;
         y = value.Y;
         w = value.Z;
+        validW = (value.Flags & PgxpFlags.Valid2) != 0 && float.IsFinite(w) && w > 0f;
         seq = value.Count;
         transform = value.Transform;
         return true;
@@ -211,14 +236,21 @@ public static class PgxpGpu
         if (!hasHint) return false;
         
         var best = Distance(seq, hintSeq);
+        var tied = false;
         
         for (var i = 0; i < alt.Count; i++)
         {
             alt.Get(i, out var ax, out var ay, out var az, out var aseq, out var atransform);
             
             var distance = Distance(aseq, hintSeq);
-            if (distance >= best) continue;
-            
+            if (distance == best)
+            {
+                if (x != ax || y != ay || w != az || transform != atransform) tied = true;
+                continue;
+            }
+            if (distance > best) continue;
+
+            tied = false;
             best = distance;
             x = ax;
             y = ay;
@@ -227,7 +259,7 @@ public static class PgxpGpu
             transform = atransform;
         }
         
-        return best <= SeqWindow;
+        return !tied && best <= SeqWindow;
     }
     
     private static bool TrySlot(int sx, int sy, out int index)
@@ -241,7 +273,7 @@ public static class PgxpGpu
     
     private static uint Distance(uint a, uint b)
     {
-        return a > b ? a - b : b - a;
+        return Math.Min(unchecked(a - b), unchecked(b - a));
     }
     
     private static uint Generation(uint tag)

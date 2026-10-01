@@ -125,7 +125,7 @@ public static class ModLoader
 
         while (!work.IsCompleted)
         {
-            HostWindow.Pump();
+            GpuJobs.Run(HostWindow.Pump);
             Thread.Sleep(16);
         }
 

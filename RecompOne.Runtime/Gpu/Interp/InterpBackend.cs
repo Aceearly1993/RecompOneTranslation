@@ -32,6 +32,7 @@ public sealed class InterpBackend : IGpuBackend
     private bool _active;
     private bool _interpolating;
     private int _frames = 1;
+    private float _lastWeight;
     
     public InterpBackend(IGpuBackend inner)
     {
@@ -263,6 +264,7 @@ public sealed class InterpBackend : IGpuBackend
             Recycle(_previous);
             _previous = _current;
             _current = _ready.Dequeue();
+            _lastWeight = 0f;
         }
         
         return true;
@@ -284,7 +286,11 @@ public sealed class InterpBackend : IGpuBackend
         var gap = _lastBeginMs > 0.0 ? now - _lastBeginMs : 0.0;
         _lastBeginMs = now;
         
-        if (gap > StallMs) _resync = true;
+        if (gap > StallMs)
+        {
+            _resync = true;
+            _sourceMs = _source > 0 ? 1000.0 / _source : 0.0;
+        }
         else if (gap > 0.0) _sourceMs = _sourceMs > 0.0 ? _sourceMs * 0.75 + gap * 0.25 : gap;
         
         if (_resync)
@@ -335,20 +341,35 @@ public sealed class InterpBackend : IGpuBackend
     {
         if (!_active) return;
         
-        var weight = _interpolating && index < _frames ? _clock.Weights(_frames)[index] : 1f;
         var start = _watch.Elapsed.TotalMilliseconds;
         
         lock (_gate)
         {
+            if (_current.IsEmpty) return;
+            var weight = _interpolating && index >= 0 && index < _frames ? _clock.Weights(_frames)[index] : 1f;
+            weight = Math.Max(weight, _lastWeight);
             if (_interpolating && weight < 1f) _transforms.Build(_current, _previous, weight);
-            
+
             Replay(_current, _interpolating ? _previous : null, weight);
+            _lastWeight = weight;
         }
-        
+
         _renderedMs += _watch.Elapsed.TotalMilliseconds - start;
         _rendered++;
     }
     
+    public void ComposeEndpoint()
+    {
+        if (!_active) return;
+        lock (_gate)
+        {
+            if (_current.IsEmpty || _lastWeight >= 1f) return;
+            Replay(_current, null, 1f);
+            _lastWeight = 1f;
+            _interpolating = false;
+        }
+    }
+
     public bool Affordable(int index)
     {
         if (!_active || !_interpolating || index == 0 || _budgetMs <= 0.0) return true;
@@ -385,9 +406,12 @@ public sealed class InterpBackend : IGpuBackend
         {
             if (_current.IsEmpty) return;
             
-            Replay(_current, null, 1f);
+            if (_lastWeight < 1f) Replay(_current, null, 1f);
             _current.Clear();
             _current.Interpolatable = false;
+            _lastWeight = 1f;
+            _interpolating = false;
+            _resync = true;
         }
     }
     

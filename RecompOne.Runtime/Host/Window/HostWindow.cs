@@ -514,6 +514,7 @@ public static class HostWindow
         PopupManager.Register(new ModsPopup());
         PopupManager.Register(new ModLoadingPopup());
         PopupManager.Register(new NoticePopup());
+        PopupManager.Register(new CrashPopup());
         PopupManager.Register(new StartupNoticePopup());
         PopupManager.Register(new DiscPickerPopup());
 
@@ -835,7 +836,7 @@ public static class HostWindow
         if (psMem == null) return;
         var ram = psMem.RamBuffer;
         var back = _ramBack;
-        _ramTask = Task.Run(() => Runtime.RamLog.BuildTexture(ram, back))
+        _ramTask = Task.Run(() => Runtime.RamLog.BuildTexture(ram.Span, back))
             .ContinueWith(_ =>
             {
                 (_ramFront, _ramBack) = (_ramBack, _ramFront);

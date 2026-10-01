@@ -212,8 +212,6 @@ public static class LibCd
 
     internal static double SectorsPerSecond => (_mode & 0x80) != 0 ? 150.0 : 75.0; //cd pacer
 
-    private const int MaxSectorsPerTick = 400000;
-
     private static int _cddaStart;
 
     private static void StartCdda()
@@ -301,10 +299,13 @@ public static class LibCd
         }
 
         PumpSync();
-        PumpDataIrq();
         var xaMode = (_mode & 0x40) != 0;
 
-        if (_xaActive && xaMode) return;
+        if (_xaActive && xaMode)
+        {
+            PumpDataIrq();
+            return;
+        }
 
         if (_inDataCb || !_readActive || (_cbData == 0 && _cbReady == 0)) return;
         var c = Runtime.Cpu;
@@ -317,7 +318,7 @@ public static class LibCd
             _inDataCb = true;
             try
             {
-                for (var i = 0; i < DataCbBurst && _cbData != 0; i++)
+                for (var i = 0; i < DeliveryLimit() && _cbData != 0; i++)
                 {
                     if (FrameBudgetSpent()) break;
                     _lastIntr = DataReady;
@@ -351,7 +352,7 @@ public static class LibCd
         else
         {
             c.Restore(snap);
-            PumpReady(MaxSectorsPerTick);
+            if (_readyOnlyRead) PumpReady(1);
             return;
         }
 
@@ -487,35 +488,7 @@ public static class LibCd
 
     public static void Pump()
     {
-        TickCdda();
-        if (LibDs.Active)
-        {
-            LibDs.Pump();
-            return;
-        }
-
         PumpSync();
-        FeedDataRead();
-        if (!PumpDataIrq()) PumpReady(1);
-    }
-
-    private static void FeedDataRead()
-    {
-        if (_inDataCb || !_readActive || (_mode & 0x40) != 0) return;
-        if (_cbReady == 0 && _cbData == 0) return;
-
-        lock (_dataIrqQueue)
-        {
-            if (_dataIrqQueue.Count > 0) return;
-        }
-
-        var lba = CurrentLba;
-        if (lba < 0 || Runtime.Cd == null || lba >= Runtime.Cd.Fs.DataSectors) return;
-        if (FrameBudgetSpent()) return;
-
-        QueueDataIrq(lba);
-        AdvancePos(1);
-        Dispatcher.LoadByLba(CurrentLba);
     }
 
     private static void PumpSync()
@@ -555,9 +528,16 @@ public static class LibCd
 
     private static int _frameSectors;
 
-    private const int DataCbBurst = 16;
+    private const int MaxSectorsPerTick = 400000;
 
-    public static int SectorsPerFrame { get; set; }
+    private static bool _readyOnlyRead;
+
+    public static int SectorsPerFrame { get; set; } = -1;
+
+    private static int DeliveryLimit()
+    {
+        return SectorsPerFrame > 0 ? SectorsPerFrame : MaxSectorsPerTick;
+    }
 
     private static bool FrameBudgetSpent()
     {
@@ -990,6 +970,7 @@ public static class LibCd
     {
         c.V0 = _cbData;
         _cbData = c.A0;
+        if (c.A0 != 0) _readyOnlyRead = false;
     }
 
     public static void CdStatus(CpuContext c, IMemory m)
@@ -1021,6 +1002,7 @@ public static class LibCd
         _cbSync = _cbReady = _cbData = _cbRead = 0;
         _inReadCb = false;
         _readActive = false;
+        _readyOnlyRead = false;
         lock (_syncQueue)
         {
             _syncQueue.Clear();
@@ -1062,6 +1044,7 @@ public static class LibCd
         }
 
         _readActive = false;
+        _readyOnlyRead = false;
         _xaActive = false;
         FifoReload(-1);
         _cddaMute = false;
@@ -1104,6 +1087,7 @@ public static class LibCd
                     }
 
                 _readActive = false;
+                _readyOnlyRead = false;
                 lock (_dataIrqQueue)
                 {
                     _dataIrqQueue.Clear();
@@ -1133,6 +1117,7 @@ public static class LibCd
                 }
 
                 _readActive = true;
+                _readyOnlyRead = _cbData == 0;
                 _xaActive = true;
                 _xaFirstSector = true;
                 StartXaPacer();
@@ -1157,12 +1142,14 @@ public static class LibCd
                 _xaActive = true;
                 _xaFirstSector = true;
                 _readActive = (_mode & 0x40) == 0;
+                _readyOnlyRead = _cbData == 0;
                 _status = (byte)(StatMotor | StatRead);
                 LibCdStream.OnReadStream(CurrentLba);
                 EnsureXaThread();
                 break;
             case Play:
                 _readActive = false;
+                _readyOnlyRead = false;
                 _xaActive = false;
                 _status = (byte)(StatMotor | StatPlay);
                 StartCdda();
@@ -1244,6 +1231,7 @@ public static class LibCd
                 XaAudio.Reset();
                 LibCdStream.OnStopStream();
                 _readActive = false;
+                _readyOnlyRead = false;
                 _xaActive = false;
                 _status = StatMotor;
                 Dispatcher.ClearPending();

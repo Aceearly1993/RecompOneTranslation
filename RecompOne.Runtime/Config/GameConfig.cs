@@ -100,7 +100,7 @@ public class GameConfig
     public string PadDevice2 { get; set; } = "";
     public GamepadBindings PadAnalog { get; set; } = GamepadBindings.DefaultAnalog();
     public GamepadBindings PadAnalog2 { get; set; } = GamepadBindings.Empty();
-    public PadKind PadKind { get; set; } = PadKind.Digital;
+    public PadKind PadKind { get; set; } = PadKind.Analog;
     public PadKind PadKind2 { get; set; } = PadKind.Digital;
 
     public PadKind KindFor(int port)

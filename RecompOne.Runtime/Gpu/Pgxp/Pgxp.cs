@@ -34,7 +34,7 @@ public static class Pgxp
     {
         var view = ConfigManager.View;
 
-        Enabled = view.GetBool(KeyEnable);
+        Enabled = view.GetBool(KeyEnable, false);
         Culling = view.GetBool(KeyCulling, true);
         TextureCorrection = view.GetBool(KeyTextureCorrection, true);
         VertexCache = view.GetBool(KeyVertexCache, true);
