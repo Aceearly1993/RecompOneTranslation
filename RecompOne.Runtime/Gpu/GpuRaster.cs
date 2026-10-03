@@ -1,3 +1,4 @@
+using System.Numerics;
 using RecompOne.Runtime.Events;
 
 namespace RecompOne.Runtime;
@@ -11,6 +12,9 @@ public sealed partial class Gpu
         public float Px, Py, Pw;
         public bool Precise;
         public bool PreciseW;
+        public bool Native;
+        public bool IgnoreDepth;
+        public Vector3 Camera; //camera space, for interp
         public int Transform;
     }
 
@@ -54,8 +58,20 @@ public sealed partial class Gpu
             v[i].Y = _drawOffsetY + CoordY(vw);
             v[i].Precise = false;
             v[i].PreciseW = false;
-
-            if (Pgxp.Pgxp.Enabled)
+            v[i].Native = false;
+            v[i].IgnoreDepth = false;
+            
+            if (_fifoBase != 0u && Hle.NativeGeometry.TryTake(_fifoBase + (uint)slot * 4u, vw, out var native))
+            {
+                v[i].Px = _drawOffsetX + native.Screen.X;
+                v[i].Py = _drawOffsetY + native.Screen.Y;
+                v[i].Pw = native.Camera.Z;
+                v[i].Camera = native.Camera;
+                v[i].Transform = native.Transform;
+                v[i].Native = v[i].Precise = v[i].PreciseW = true;
+                v[i].IgnoreDepth = native.IgnoreDepth;
+            }
+            else if (Pgxp.Pgxp.Enabled)
             {
                 float px = 0f, py = 0f, pw = 1f;
                 var validW = false;
@@ -293,6 +309,7 @@ public sealed partial class Gpu
 
     private static bool WithinTolerance(float px, float py, uint w)
     {
+        if (!float.IsFinite(px) || !float.IsFinite(py)) return false;
         var tolerance = Pgxp.Pgxp.Tolerance;
         if (tolerance < 0f) return true;
         

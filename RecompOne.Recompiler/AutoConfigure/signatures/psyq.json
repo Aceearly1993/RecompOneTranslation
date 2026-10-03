@@ -24869,7 +24869,7 @@
   {
    "name": "DrawPrim",
    "library": "libgpu",
-   "hle": false,
+   "hle": true,
    "variants": [
     {
      "size": 92,
@@ -264285,7 +264285,7 @@
   {
    "name": "RotTransPers",
    "library": "libgte",
-   "hle": false,
+   "hle": true,
    "variants": [
     {
      "size": 44,
@@ -264325,7 +264325,7 @@
   {
    "name": "RotTransPers3",
    "library": "libgte",
-   "hle": false,
+   "hle": true,
    "variants": [
     {
      "size": 84,
@@ -264469,7 +264469,7 @@
   {
    "name": "RotTransPers4",
    "library": "libgte",
-   "hle": false,
+   "hle": true,
    "variants": [
     {
      "size": 120,

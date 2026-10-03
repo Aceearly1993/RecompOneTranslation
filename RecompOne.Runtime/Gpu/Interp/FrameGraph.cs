@@ -9,6 +9,7 @@ internal enum GraphOp : byte
     Rect,
     Line,
     Fill,
+    DisplayMargins,
     CopyVram,
     WriteVram
 }
@@ -41,7 +42,6 @@ internal struct TransformRecord
     public int Tris;
     public int Match;
     public bool Lerp;
-    public bool Warpable;
     public int Held;
 }
 

@@ -272,7 +272,7 @@ public static class OverlayWriter
         foreach (var result in overlayResults)
         {
             Console.WriteLine($"[Recompiler] emiting {result.Name}.cs ({result.Functions.Count} functions)");
-            EmitOverlayFile(result.Name, overlayParts[result.Name], knownFuncs, config.Debug,
+            EmitOverlayFile(result.Name, overlayParts[result.Name], knownFuncs, config.Debug, config.Pgxp,
                 config.AddressComments, config.DisasmComments, result.LbaStart, result.Base, result.Size,
                 result.Instructions, outDir,
                 SymbolRelocator.Plan(result.Functions, config.Relocations, result.Name));
@@ -323,7 +323,7 @@ public static class OverlayWriter
     private sealed record OverlayPart(string Class, List<MipsFunction> Functions);
 
     private static void EmitOverlayFile(string overlayName, List<OverlayPart> parts,
-        Dictionary<uint, string> knownFuncs, bool debug, bool addressComments,
+        Dictionary<uint, string> knownFuncs, bool debug, bool pgxp, bool addressComments,
         bool disasmComments, int lbaStart, uint ovlBase, uint ovlSize, MipsInstruction[] instrs, string outDir,
         Dictionary<uint, uint> relocations)
     {
@@ -357,6 +357,7 @@ public static class OverlayWriter
                     Labels = labels,
                     BackEdges = backEdges,
                     Debug = debug,
+                    Pgxp = pgxp,
                     AddressComments = addressComments,
                     DisasmComments = disasmComments,
                     JumpTablesByJr = func.JumpTables.ToDictionary(j => j.JrVram),

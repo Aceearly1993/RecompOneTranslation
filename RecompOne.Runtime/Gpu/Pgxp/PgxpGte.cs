@@ -23,7 +23,7 @@ public static class PgxpGte
         
         _sxy2.X = x;
         _sxy2.Y = y;
-        _sxy2.Z = Pgxp.TextureCorrection ? w : 1f;
+        _sxy2.Z = w;
         _sxy2.Value = packed;
         _sxy2.Flags = PgxpFlags.ValidAll;
         _sxy2.Count = _count++;

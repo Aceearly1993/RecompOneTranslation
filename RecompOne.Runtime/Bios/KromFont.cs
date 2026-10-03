@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace RecompOne.Runtime.Bios;
 
 public static class KromFont
@@ -12,13 +10,68 @@ public static class KromFont
 
     private const int GlyphBytes = 0x1E;
 
-    private static readonly byte[] Font1 = LoadResource("font1.raw");
-    private static readonly byte[] Font2 = LoadResource("font2.raw");
+    private static byte[] Font1 = LoadResource("font1.raw");
+    private static byte[] Font2 = LoadResource("font2.raw");
+    
+    private static readonly object Sync = new();
+    private static readonly List<WeakReference<byte[]>> InstalledRoms = [];
+    
+    public static void KromSetFont1(string path) => KromSetFont1(File.ReadAllBytes(path));
+    public static void KromSetFont2(string path) => KromSetFont2(File.ReadAllBytes(path));
+    
+    public static void KromSetFont1(ReadOnlySpan<byte> data) => SetFont(data, true);
+    public static void KromSetFont2(ReadOnlySpan<byte> data) => SetFont(data, false);
+    
+    private static void SetFont(ReadOnlySpan<byte> data, bool first)
+    {
+        int offset = first ? Font1RomOffset : Font2RomOffset;
+        int capacity = first ? Font2RomOffset - Font1RomOffset : 0x80000 - Font2RomOffset;
+        if (data.IsEmpty || data.Length > capacity || data.Length % GlyphBytes != 0) throw new ArgumentException("Font data must contain complete 30-byte glyphs, and fit in its BIOS region!", nameof(data));
+        var font = data.ToArray();
+        lock (Sync)
+        {
+            if (first) Font1 = font;
+            else Font2 = font;
+            for (int i = InstalledRoms.Count - 1; i >= 0; i--)
+            {
+                if (!InstalledRoms[i].TryGetTarget(out var rom))
+                {
+                    InstalledRoms.RemoveAt(i);
+                    continue;
+                }
+                rom.AsSpan(offset, capacity).Clear();
+                font.CopyTo(rom, offset);
+            }
+        }
+    }
+    
+    public static void KromSetTable(ReadOnlySpan<Lookup> entries)
+    {
+        if (entries.IsEmpty || entries[0].Codepoint > 0x8140)
+            throw new ArgumentException("The start address is incorrect", nameof(entries));
+        var table = entries.ToArray();
+        for (int i = 1; i < table.Length; i++)
+            if (table[i].Codepoint <= table[i - 1].Codepoint)
+                throw new ArgumentException("Table is malformated", nameof(entries));
+        Volatile.Write(ref Table, table);
+    }
 
     public static void InstallInto(byte[] biosRom)
     {
-        Array.Copy(Font1, 0, biosRom, Font1RomOffset, Font1.Length);
-        Array.Copy(Font2, 0, biosRom, Font2RomOffset, Font2.Length);
+        ArgumentNullException.ThrowIfNull(biosRom);
+        if (biosRom.Length < 0x80000)
+            throw new ArgumentException("BIOS buffer too short", nameof(biosRom));
+        lock (Sync)
+        {
+            Array.Copy(Font1, 0, biosRom, Font1RomOffset, Font1.Length);
+            Array.Copy(Font2, 0, biosRom, Font2RomOffset, Font2.Length);
+            for (int i = InstalledRoms.Count - 1; i >= 0; i--)
+            {
+                if (!InstalledRoms[i].TryGetTarget(out var rom)) InstalledRoms.RemoveAt(i);
+                else if (ReferenceEquals(rom, biosRom)) return;
+            }
+            InstalledRoms.Add(new WeakReference<byte[]>(biosRom));
+        }
     }
 
     public static uint Krom2RawAdd(uint code)
@@ -35,15 +88,20 @@ public static class KromFont
     {
         var c = (ushort)code;
         if (c < 0x8140 || c > 0x9872) return 0;
-        var idx = 1;
-        while (Table[idx].Codepoint <= c) idx++;
-        idx--;
-        return (ushort)(c - Table[idx].Codepoint + Table[idx].Offset);
+        var table = Volatile.Read(ref Table);
+        int low = 0, high = table.Length - 1;
+        while (low < high)
+        {
+            int middle = low + (high - low + 1) / 2;
+            if (table[middle].Codepoint <= c) low = middle;
+            else high = middle - 1;
+        }
+        return (ushort)(c - table[low].Codepoint + table[low].Offset);
     }
 
-    private readonly record struct Lookup(ushort Codepoint, ushort Offset);
+    public readonly record struct Lookup(ushort Codepoint, ushort Offset);
 
-    private static readonly Lookup[] Table =
+    private static Lookup[] Table =
     {
         new(0x8140, 0x0000), new(0x8180, 0x003f), new(0x81ad, 0x006d), new(0x81b8, 0x006c),
         new(0x81c0, 0x0080), new(0x81c8, 0x0074), new(0x81cf, 0x008f), new(0x81da, 0x007b),

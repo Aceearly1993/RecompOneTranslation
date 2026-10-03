@@ -5,6 +5,7 @@ namespace RecompOne.Runtime.Pgxp;
 public static class Pgxp
 {
     public static bool Shown = true;
+    public static bool Supported { get; set; } = true;
     
     public const string KeyEnable = "pgxp.enable";
     public const string KeyCulling = "pgxp.culling";
@@ -34,7 +35,7 @@ public static class Pgxp
     {
         var view = ConfigManager.View;
 
-        Enabled = view.GetBool(KeyEnable, false);
+        Enabled = Supported && view.GetBool(KeyEnable, false);
         Culling = view.GetBool(KeyCulling, true);
         TextureCorrection = view.GetBool(KeyTextureCorrection, true);
         VertexCache = view.GetBool(KeyVertexCache, true);

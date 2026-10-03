@@ -28,6 +28,7 @@ public sealed class InterpBackend : IGpuBackend
     private FrameGraph _previous = new();
     
     private readonly Dictionary<int, int> _groups = new();
+    private readonly HashSet<(int Group, uint Material)> _materials = [];
     
     private bool _active;
     private bool _interpolating;
@@ -51,6 +52,15 @@ public sealed class InterpBackend : IGpuBackend
         {
             _inner.SetDrawEnv(env);
             return;
+        }
+        if (_recording.Envs.Count > 0)
+        {
+            var last = _recording.Envs[^1];
+            if (last.ClipX0 == env.ClipX0 && last.ClipY0 == env.ClipY0 &&
+                last.ClipX1 == env.ClipX1 && last.ClipY1 == env.ClipY1 &&
+                last.TwMaskX == env.TwMaskX && last.TwMaskY == env.TwMaskY &&
+                last.TwOffX == env.TwOffX && last.TwOffY == env.TwOffY &&
+                last.SetMask == env.SetMask && last.CheckMask == env.CheckMask && last.Dither == env.Dither) return;
         }
         _recording.Envs.Add(env);
         _recording.Add(GraphOp.DrawEnv, _recording.Envs.Count - 1);
@@ -89,11 +99,9 @@ public sealed class InterpBackend : IGpuBackend
         if (slot <= 0) return;
         
         var held = _recording.Transforms[slot - 1];
-        var key = held.Key == 0u ? 2166136261u : held.Key;
-        key = (key ^ f.TPage) * 16777619u;
-        key = (key ^ f.Clut) * 16777619u;
-        key = (key ^ (f.Textured ? 1u : 0u)) * 16777619u;
-        held.Key = key;
+        var material = (uint)f.TPage | ((uint)f.Clut << 16);
+        var key = (material ^ (f.Textured ? 0x9E3779B9u : 0u)) * 16777619u;
+        if (_materials.Add((slot, key))) held.Key = unchecked(held.Key + key);
         held.Pages |= 1u << (int)(f.TPage & 0x1Fu);
         
         if (f.Textured)
@@ -110,7 +118,7 @@ public sealed class InterpBackend : IGpuBackend
     private int Group(in HleVertex a, in HleVertex b, in HleVertex c)
     {
         var serial = a.Transform > 0 ? a.Transform : b.Transform > 0 ? b.Transform : c.Transform;
-        if (serial <= 0) return 0;
+        if (serial <= 0 || a.Transform != serial || b.Transform != serial || c.Transform != serial) return 0;
         
         if (_groups.TryGetValue(serial, out var index))
         {
@@ -178,6 +186,17 @@ public sealed class InterpBackend : IGpuBackend
         _recording.Add(GraphOp.Fill, _recording.Fills.Count - 1);
     }
     
+    public void FillDisplayMargins(int x, int y, int w, int h, ushort color15)
+    {
+        if (!_active)
+        {
+            _inner.FillDisplayMargins(x, y, w, h, color15);
+            return;
+        }
+        _recording.Fills.Add(new FillRecord { X = x, Y = y, W = w, H = h, Color = color15 });
+        _recording.Add(GraphOp.DisplayMargins, _recording.Fills.Count - 1);
+    }
+    
     public void CopyVram(int sx, int sy, int dx, int dy, int w, int h)
     {
         if (!_active)
@@ -238,6 +257,7 @@ public sealed class InterpBackend : IGpuBackend
             _recording = _free.Count > 0 ? _free.Pop() : new FrameGraph();
             _recording.Clear();
             _groups.Clear();
+            _materials.Clear();
         }
     }
     
@@ -394,6 +414,8 @@ public sealed class InterpBackend : IGpuBackend
         _clock.Reset();
         while (_ready.Count > 0) Recycle(_ready.Dequeue());
         _recording.Clear();
+        _groups.Clear();
+        _materials.Clear();
         _current.Clear();
         _previous.Clear();
     }
@@ -417,6 +439,7 @@ public sealed class InterpBackend : IGpuBackend
     
     private void Replay(FrameGraph graph, FrameGraph? previous, float weight)
     {
+        _inner.BeginScene();
         var pixels = CollectionsMarshal.AsSpan(graph.Pixels);
         var ops = CollectionsMarshal.AsSpan(graph.Ops);
         var slots = CollectionsMarshal.AsSpan(graph.Slots);
@@ -455,6 +478,12 @@ public sealed class InterpBackend : IGpuBackend
                 {
                     ref var fill = ref fills[slot];
                     _inner.FillRect(fill.X, fill.Y, fill.W, fill.H, fill.Color);
+                    break;
+                }
+                case GraphOp.DisplayMargins:
+                {
+                    ref var margin = ref fills[slot];
+                    _inner.FillDisplayMargins(margin.X, margin.Y, margin.W, margin.H, margin.Color);
                     break;
                 }
                 case GraphOp.CopyVram:

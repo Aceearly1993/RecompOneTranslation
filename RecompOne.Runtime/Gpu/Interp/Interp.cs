@@ -23,7 +23,7 @@ public static class Interp
     
     public static bool Requested => TargetFps != Native;
     
-    public static bool Available => Pgxp.Pgxp.Enabled && Pgxp.Pgxp.MemoryTracking;
+    public static bool Available => Hle.NativeGeometry.Enabled || (Pgxp.Pgxp.Enabled && Pgxp.Pgxp.MemoryTracking);
     
     public static bool Enabled => Requested && Available;
     

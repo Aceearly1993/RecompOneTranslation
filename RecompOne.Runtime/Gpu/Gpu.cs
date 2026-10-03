@@ -123,9 +123,10 @@ public sealed partial class Gpu
 
     private bool _polylineShaded;
 
-    private void Push(uint word)
+    private void Push(uint word, uint address = 0u)
     {
-        if (_fifoCount == 0) _fifoBase = 0u;
+        if (_fifoCount == 0) _fifoBase = address;
+        else if (_fifoBase != 0u && address != _fifoBase + (uint)_fifoCount * 4u) _fifoBase = 0u;
         if (_fifoCount < _fifo.Length) _fifo[_fifoCount++] = word;
     }
 
@@ -135,21 +136,21 @@ public sealed partial class Gpu
     {
         if (words.Length == 0) return;
 
-        _fifoBase = 0u;
-
         if (_loadImage || _polyline || _fifoCount != 0 || words.Length > _fifo.Length)
         {
-            foreach (var w in words) WriteGp0(w);
+            for (var i = 0; i < words.Length; i++)
+                WriteGp0(words[i], baseAddress == 0u ? 0u : baseAddress + (uint)i * 4u);
             return;
         }
 
         var need = CommandLength(words[0]);
         if (need != words.Length)
         {
-            foreach (var w in words) WriteGp0(w);
+            for (var i = 0; i < words.Length; i++)
+                WriteGp0(words[i], baseAddress == 0u ? 0u : baseAddress + (uint)i * 4u);
             return;
         }
-
+        
         words.CopyTo(_fifo);
         _fifoCount = words.Length;
         _fifoBase = baseAddress;
@@ -157,7 +158,9 @@ public sealed partial class Gpu
         if (!_loadImage) _fifoCount = 0;
     }
 
-    public void WriteGp0(uint word)
+    public void WriteGp0(uint word) => WriteGp0(word, 0u);
+    
+    private void WriteGp0(uint word, uint address)
     {
         if (_loadImage)
         {
@@ -180,13 +183,13 @@ public sealed partial class Gpu
             }
             else
             {
-                Push(word);
+                Push(word, address);
             }
 
             return;
         }
 
-        Push(word);
+        Push(word, address);
         if (_fifoCount == 1)
         {
             _need = CommandLength(word);

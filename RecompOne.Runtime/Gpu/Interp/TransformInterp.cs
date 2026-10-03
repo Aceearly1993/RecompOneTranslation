@@ -25,11 +25,12 @@ internal sealed class TransformInterp
     }
     
     private Pose[] _poses = [];
-    private bool[] _taken = [];
     private int[] _bestCur = [];
     private int[] _bestPrev = [];
     private float[] _scoreCur = [];
     private float[] _scorePrev = [];
+    private float[] _secondCur = [];
+    private float[] _secondPrev = [];
     private readonly List<int>[] _previousByPage = CreatePageBuckets(); 
     private readonly List<int> _pageCandidates = []; //performance improv, the ida is to instead of lookup poly by poly check only plausible candidates
     private int[] _candidateMarks = [];
@@ -46,88 +47,33 @@ internal sealed class TransformInterp
     
     private readonly Dictionary<uint, int> _order = new();
     
-    private readonly Dictionary<long, float> _depths = new();
-    
-    
-    private void Fill(FrameGraph current)
+    private const int PreparedStride = 39;
+    private float[] _prepared = [];
+    private bool[] _preparedValid = [];
+
+    private void Prepare(FrameGraph current, FrameGraph previous)
     {
-        _depths.Clear();
-        
-        foreach (var tri in current.Tris)
+        var count = current.Transforms.Count;
+        if (_preparedValid.Length < count)
         {
-            if (tri.Transform <= 0) continue;
-            
-            Learn(tri.Transform, in tri.A);
-            Learn(tri.Transform, in tri.B);
-            Learn(tri.Transform, in tri.C);
+            _preparedValid = new bool[count];
+            _prepared = new float[count * PreparedStride];
         }
-        
-        for (var i = 0; i < current.Tris.Count; i++)
-        {
-            var tri = current.Tris[i];
-            if (tri.Transform <= 0) continue;
-            if (tri.A.Depth > 0f && tri.B.Depth > 0f && tri.C.Depth > 0f) continue;
-            
-            Borrow(tri.Transform, ref tri.A);
-            Borrow(tri.Transform, ref tri.B);
-            Borrow(tri.Transform, ref tri.C);
-            
-            current.Tris[i] = tri;
-        }
-    }
-    
-    private void Learn(int group, in HleVertex vertex)
-    {
-        if (vertex.Depth <= 0f) return;
-        
-        _depths.TryAdd(Corner(group, in vertex), vertex.Depth);
-    }
-    
-    private void Borrow(int group, ref HleVertex vertex)
-    {
-        if (vertex.Depth > 0f) return;
-        if (!_depths.TryGetValue(Corner(group, in vertex), out var depth)) return;
-        
-        vertex.Depth = depth;
-    }
-    
-    private static long Corner(int group, in HleVertex vertex)
-    {
-        var x = (long)BitConverter.SingleToInt32Bits(vertex.X);
-        var y = (uint)BitConverter.SingleToInt32Bits(vertex.Y);
-        
-        return ((x << 32) | y) * 31L + group;
-    }
-    
-    private void Survey(FrameGraph current)
-    {
-        Fill(current);
-        
-        for (var i = 0; i < current.Transforms.Count; i++)
+        for (var i = 0; i < count; i++)
         {
             var group = current.Transforms[i];
-            group.Warpable = true;
-            current.Transforms[i] = group;
-        }
-        
-        foreach (var tri in current.Tris)
-        {
-            var index = tri.Transform - 1;
-            if (index < 0 || index >= current.Transforms.Count) continue;
-            
-            if (tri.A.Depth > 0f && tri.B.Depth > 0f && tri.C.Depth > 0f) continue;
-            
-            var group = current.Transforms[index];
-            if (!group.Warpable) continue;
-            
-            group.Warpable = false;
-            current.Transforms[index] = group;
+            _preparedValid[i] = false;
+            if (group.Match < 0 || !group.Lerp) continue;
+            var from = previous.Transforms[group.Match];
+            var data = _prepared.AsSpan(i * PreparedStride, PreparedStride);
+            _preparedValid[i] = Invert(in group, data[..9]) &&
+                Decompose(in from, data.Slice(9, 9), data.Slice(27, 6)) &&
+                Decompose(in group, data.Slice(18, 9), data.Slice(33, 6));
         }
     }
-    
+
     public void Match(FrameGraph current, FrameGraph previous)
     {
-        Survey(current);
         
         Matched = 0;
         Groups = current.Transforms.Count;
@@ -135,10 +81,8 @@ internal sealed class TransformInterp
         Order(current);
         Order(previous);
         
-        if (_taken.Length < previous.Transforms.Count) _taken = new bool[previous.Transforms.Count];
-        Array.Clear(_taken, 0, previous.Transforms.Count);
-        
         Assign(current, previous);
+        Prepare(current, previous);
     }
     
     private void Order(FrameGraph graph)
@@ -177,22 +121,29 @@ internal sealed class TransformInterp
 
                 if (score < _scoreCur[i])
                 {
+                    _secondCur[i] = _scoreCur[i];
                     _scoreCur[i] = score;
                     _bestCur[i] = j;
                 }
 
+                else if (score < _secondCur[i]) _secondCur[i] = score;
+
                 if (score < _scorePrev[j])
                 {
+                    _secondPrev[j] = _scorePrev[j];
                     _scorePrev[j] = score;
                     _bestPrev[j] = i;
                 }
+                else if (score < _secondPrev[j]) _secondPrev[j] = score;
             }
         }
 
         for (var i = 0; i < here; i++)
         {
             var j = _bestCur[i];
-            if (j < 0 || _bestPrev[j] != i) continue;
+            if (j < 0 || _bestPrev[j] != i ||
+                _secondCur[i] - _scoreCur[i] <= 0.001f ||
+                _secondPrev[j] - _scorePrev[j] <= 0.001f) continue;
             
             Accept(current, previous, i, j);
         }
@@ -250,11 +201,8 @@ internal sealed class TransformInterp
             pageBits &= pageBits - 1;
         }
 
-        if (BitCount(pages) > 1) _pageCandidates.Sort();
         return _pageCandidates.Count;
     }
-
-    private static int BitCount(uint value) => System.Numerics.BitOperations.PopCount(value);
 
     private void EnsureBestCapacity(int here, int there)
     {
@@ -262,12 +210,14 @@ internal sealed class TransformInterp
         {
             _bestCur = new int[here];
             _scoreCur = new float[here];
+            _secondCur = new float[here];
         }
 
         if (_bestPrev.Length < there)
         {
             _bestPrev = new int[there];
             _scorePrev = new float[there];
+            _secondPrev = new float[there];
         }
     }
 
@@ -276,13 +226,13 @@ internal sealed class TransformInterp
         for (var i = 0; i < here; i++)
         {
             _bestCur[i] = -1;
-            _scoreCur[i] = float.MaxValue;
+            _scoreCur[i] = _secondCur[i] = float.MaxValue;
         }
 
         for (var i = 0; i < there; i++)
         {
             _bestPrev[i] = -1;
-            _scorePrev[i] = float.MaxValue;
+            _scorePrev[i] = _secondPrev[i] = float.MaxValue;
         }
     }
     
@@ -310,7 +260,6 @@ internal sealed class TransformInterp
         group.Lerp = steady || group.Held < Doubts;
         
         current.Transforms[index] = group;
-        _taken[partner] = true;
         Matched++;
     }
     
@@ -320,7 +269,7 @@ internal sealed class TransformInterp
 
         var few = Math.Min(current.Tris, previous.Tris);
         var many = Math.Max(current.Tris, previous.Tris);
-        if (many > few * 2) return false;
+        if (current.Key != previous.Key && many > few * 2) return false;
 
         if (current.H != previous.H) return false;
         return Determinant(in current) * Determinant(in previous) >= 0f;
@@ -401,19 +350,19 @@ internal sealed class TransformInterp
         if (_poses.Length < current.Transforms.Count) _poses = new Pose[current.Transforms.Count];
         
         Span<float> blended = stackalloc float[9];
-        Span<float> inverse = stackalloc float[9];
         
         for (var i = 0; i < current.Transforms.Count; i++)
         {
             _poses[i].Valid = false;
             
             var group = current.Transforms[i];
-            if (group.Match < 0 || !group.Warpable || !group.Lerp) continue;
+            if (!_preparedValid[i]) continue;
             
             var from = previous.Transforms[group.Match];
             
-            if (!Blend(in from, in group, weight, blended)) continue;
-            if (!Invert(in group, inverse)) continue;
+            var prepared = _prepared.AsSpan(i * PreparedStride, PreparedStride);
+            var inverse = prepared[..9];
+            if (!Blend(prepared, weight, blended)) continue;
             
             ref var pose = ref _poses[i];
             
@@ -476,48 +425,55 @@ internal sealed class TransformInterp
     
     private static bool Place(ref Pose pose, in HleVertex vertex, ref HleVertex result)
     {
-        if (vertex.Depth <= 0f) return false;
+        if (!float.IsFinite(vertex.Depth) || vertex.Depth <= 0f) return false;
         
-        var depth = vertex.Depth;
-        var vx = (vertex.X - pose.OFX) * depth / pose.H;
-        var vy = (vertex.Y - pose.OFY) * depth / pose.H;
-        
-        vx -= pose.CX;
-        vy -= pose.CY;
-        var vz = depth - pose.CZ;
+        float vx;
+        float vy;
+        float vz;
+        if (vertex.Native)
+        {
+            vx = vertex.Camera.X - pose.CX;
+            vy = vertex.Camera.Y - pose.CY;
+            vz = vertex.Camera.Z - pose.CZ;
+        }
+        else
+        {
+            var depth = vertex.Depth;
+            vx = (vertex.X - pose.OFX) * depth / pose.H - pose.CX;
+            vy = (vertex.Y - pose.OFY) * depth / pose.H - pose.CY;
+            vz = depth - pose.CZ;
+        }
         
         var nx = pose.M0 * vx + pose.M1 * vy + pose.M2 * vz + pose.TX;
         var ny = pose.M3 * vx + pose.M4 * vy + pose.M5 * vz + pose.TY;
         var nz = pose.M6 * vx + pose.M7 * vy + pose.M8 * vz + pose.TZ;
         
         var near = pose.H / 2f;
-        if (nz < near) nz = near;
+        if (!float.IsFinite(nz) || nz < near) return false;
         
         var x = pose.OFX + nx * pose.H / nz;
         var y = pose.OFY + ny * pose.H / nz;
         
-        if (x < -Reach || x > Reach - 1f || y < -Reach || y > Reach - 1f)
-        {
-            x = Math.Clamp(x, -Reach, Reach - 1f);
-            y = Math.Clamp(y, -Reach, Reach - 1f);
-        }
+        if (!float.IsFinite(x) || !float.IsFinite(y)) return false;
         
         result.X = x;
         result.Y = y;
-        result.Z = nz;
+        result.Z = vertex.HasGteZ ? nz : vertex.Z;
+        result.Depth = nz;
+        result.Camera = new System.Numerics.Vector3(nx, ny, nz);
+        result.Native = vertex.Native;
+        result.HasGteZ = true;
         
         return true;
     }
     
-    private static bool Blend(in TransformRecord from, in TransformRecord to, float weight, Span<float> result)
+    private static bool Blend(Span<float> prepared, float weight, Span<float> result)
     {
-        Span<float> qa = stackalloc float[9];
-        Span<float> ka = stackalloc float[6];
-        Span<float> qb = stackalloc float[9];
-        Span<float> kb = stackalloc float[6];
-        
-        if (!Decompose(in from, qa, ka) || !Decompose(in to, qb, kb)) return false;
-        
+        var qa = prepared.Slice(9, 9);
+        var qb = prepared.Slice(18, 9);
+        var ka = prepared.Slice(27, 6);
+        var kb = prepared.Slice(33, 6);
+
         Span<float> rotation = stackalloc float[9];
         if (!Slerp(qa, qb, weight, rotation)) return false;
 

@@ -30,11 +30,7 @@ public static class LibGpu
 
             if (count > 0)
             {
-                if (m is PSMemory ram && ram.TryWords(addr + 4u, count, out var words))
-                    gpu.WriteGp0Packet(words, addr + 4u);
-                else
-                    for (var i = 0; i < count; i++)
-                        gpu.WriteGp0(m.ReadU32(addr + 4u + (uint)i * 4u));
+                Submit(gpu, m, addr + 4u, count);
             }
 
             var next = header & 0xFFFFFFu;
@@ -43,6 +39,25 @@ public static class LibGpu
         }
 
         if (custom) GpuPrims.Clear();
+    }
+
+    public static void DrawPrim(CpuContext c, IMemory m)
+    {
+        if (Runtime.Gpu is not { } gpu) return;
+        Submit(gpu, m, c.A0 + 4u, (int)(m.ReadU32(c.A0) >> 24));
+    }
+
+    private static void Submit(Gpu gpu, IMemory m, uint address, int count)
+    {
+        if (m is PSMemory ram && ram.TryWords(address, count, out var words))
+        {
+            gpu.WriteGp0Packet(words, address);
+            return;
+        }
+
+        Span<uint> packet = stackalloc uint[count];
+        for (var i = 0; i < count; i++) packet[i] = m.ReadU32(address + (uint)i * 4u);
+        gpu.WriteGp0Packet(packet, address);
     }
 
     public static void DrawSync(CpuContext c, IMemory m)
@@ -89,6 +104,8 @@ public static class LibGpu
             gpu.WriteGp0(0x60000000u | ((uint)b0 << 16) | ((uint)g0 << 8) | r0);
             gpu.WriteGp0(((uint)(ushort)y << 16) | (ushort)x);
             gpu.WriteGp0(((uint)(ushort)h << 16) | (ushort)w);
+            GpuHle.Backend?.FillDisplayMargins(clipX, clipY, clipW, clipH,
+                (ushort)((r0 >> 3) | ((g0 >> 3) << 5) | ((b0 >> 3) << 10)));
         }
 
         if (Event.HasAnyListeners<DrawEnvEvent>())

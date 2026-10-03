@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace RecompOne.Runtime.Hle;
 
 public struct HleVertex
@@ -9,6 +11,9 @@ public struct HleVertex
     public bool HasGteZ;
     public float Depth;
     public int Transform;
+    public bool Native;
+    public bool IgnoreDepth;
+    public Vector3 Camera;
 }
 
 public struct PrimFlags

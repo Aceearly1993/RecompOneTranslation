@@ -23,12 +23,22 @@ public sealed class GlCore : IGpuBackend
     private readonly GlDisplayRt?[] _rts = new GlDisplayRt?[2];
     private long _rtStamp;
     private long _frame;
+    private long _depthScene;
+    private bool _kDepth;
+    private int _uDepthEnabled;
     
     public void AdvanceFrame()
     {
+        BeginScene();
         _frame++;
     }
 
+
+    public void BeginScene()
+    {
+        Flush();
+        _depthScene++;
+    }
 
     private uint _vao, _vbo, _presentVao, _presentVbo, _progPrim, _progPresent, _progPresent24;
     private uint _presentFbo, _presentTex;
@@ -105,6 +115,7 @@ public sealed class GlCore : IGpuBackend
         _uSetMask = _gl.GetUniformLocation(_progPrim, "uSetMask");
         _uCheckMask = _gl.GetUniformLocation(_progPrim, "uCheckMask");
         _uPosBias = _gl.GetUniformLocation(_progPrim, "uPosBias");
+        _uDepthEnabled = _gl.GetUniformLocation(_progPrim, "uDepthEnabled");
         _uFbInv = _gl.GetUniformLocation(_progPrim, "uFbInv");
         _uRepRect = _gl.GetUniformLocation(_progPrim, "uRepRect");
         _uRepClutCount = _gl.GetUniformLocation(_progPrim, "uRepClutCount");
@@ -380,18 +391,20 @@ public sealed class GlCore : IGpuBackend
                                           _kClipX1 == _env.ClipX1 && _kClipY1 == _env.ClipY1;
     }
 
-    private void Begin(in PrimFlags f, int vertsNeeded)
+    private void Begin(in PrimFlags f, int vertsNeeded, bool useDepth = false)
     {
         var transparent = f.SemiTrans;
         var blend = f.BlendMode;
         var image = f.UseImage ? f.Image : -1;
         var target = Classify();
-        if (_count > 0 && (target != _kTarget || _kQuantizedAlpha || f.QuantizedAlpha || !DesiredMatches(transparent, blend, image))) Flush();
+        useDepth &= target != null;
+        if (_count > 0 && (useDepth != _kDepth || target != _kTarget || _kQuantizedAlpha || f.QuantizedAlpha || !DesiredMatches(transparent, blend, image))) Flush();
         if (_count + vertsNeeded > MaxVerts) Flush();
         CheckTextureFeedback(f);
 
         if (target != null) ClearMargin(target);
 
+        _kDepth = useDepth;
         _kTarget = target;
         _kImage = image;
         _kQuantizedAlpha = f.QuantizedAlpha;
@@ -560,12 +573,17 @@ public sealed class GlCore : IGpuBackend
         };
     }
 
+    private static bool DepthVertex(in HleVertex v) =>
+        v.Native && !v.IgnoreDepth && v.HasGteZ && float.IsFinite(v.Z) && v.Z >= 1f;
+
     public void DrawTri(in HleVertex a, in HleVertex b, in HleVertex c, in PrimFlags f)
     {
         ResolveReplacement(f,
             (int)Math.Min(a.U, Math.Min(b.U, c.U)), (int)Math.Min(a.V, Math.Min(b.V, c.V)),
             (int)Math.Max(a.U, Math.Max(b.U, c.U)), (int)Math.Max(a.V, Math.Max(b.V, c.V)));
-        Begin(f, 3);
+        var depth = NativeGeometry.Enabled && NativeGeometry.DepthBuffer &&
+            DepthVertex(a) && DepthVertex(b) && DepthVertex(c);
+        Begin(f, 3, depth);
         var dith = DitherOf(f);
         _verts[_count++] = V(a, f, dith);
         _verts[_count++] = V(b, f, dith);
@@ -661,7 +679,31 @@ public sealed class GlCore : IGpuBackend
             }
         }
     }
-
+    
+    //the display margings dont work well on 16 9 this fix it and the command in the gpu
+    public void FillDisplayMargins(int x, int y, int w, int h, ushort color15)
+    {
+        if (GpuHle.WideAspect <= 0f) return;
+        var rt = Classify();
+        if (rt == null || rt.Margin <= 0 || x > rt.X || y > rt.Y ||
+            x + w < rt.X + rt.W || y + h < rt.Y + rt.H) return;
+        
+        Flush();
+        var left = (uint)(rt.Margin * GlVram.Scale);
+        var right = (uint)((rt.Margin + rt.W) * GlVram.Scale);
+        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, rt.Fbo);
+        _gl.Enable(EnableCap.ScissorTest);
+        _gl.ClearColor((color15 & 0x1F) / 31f, ((color15 >> 5) & 0x1F) / 31f,
+            ((color15 >> 10) & 0x1F) / 31f, 1f);
+        _gl.Scissor(0, 0, left, (uint)rt.TexH);
+        _gl.Clear(ClearBufferMask.ColorBufferBit);
+        _gl.Scissor((int)right, 0, (uint)rt.TexW - right, (uint)rt.TexH);
+        _gl.Clear(ClearBufferMask.ColorBufferBit);
+        _gl.Disable(EnableCap.ScissorTest);
+        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+        rt.LastMarginFrame = _frame;
+    }
+    
     private void ClearMargin(GlDisplayRt rt)
     {
         if (rt.Margin <= 0 || rt.LastMarginFrame == _frame) return;
@@ -684,6 +726,7 @@ public sealed class GlCore : IGpuBackend
 
     private void FillRtFull(GlDisplayRt rt, ushort color15)
     {
+        rt.InvalidateDepth();
         float r = (color15 & 0x1F) / 31f, g = ((color15 >> 5) & 0x1F) / 31f, b = ((color15 >> 10) & 0x1F) / 31f;
         var a = (color15 & 0x8000) != 0 ? 1f : 0f;
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, rt.Fbo);
@@ -761,7 +804,18 @@ public sealed class GlCore : IGpuBackend
         GpuGlAccess.TargetOriginY = rt == null ? 0 : rt.Y;
         GpuGlAccess.TargetMargin = rt == null ? 0 : rt.Margin;
 
-        _gl.Disable(EnableCap.DepthTest);
+        if (_kDepth && rt != null)
+        {
+            rt.PrepareDepth(_gl, _depthScene);
+            _gl.Enable(EnableCap.DepthTest);
+            _gl.DepthFunc(DepthFunction.Lequal);
+            _gl.DepthMask(!_kTransparent);
+        }
+        else
+        {
+            _gl.Disable(EnableCap.DepthTest);
+            _gl.DepthMask(false);
+        }
         _gl.Disable(EnableCap.CullFace);
         _gl.Enable(EnableCap.ScissorTest);
         var s = GlVram.Scale;
@@ -816,6 +870,7 @@ public sealed class GlCore : IGpuBackend
         }
 
         _gl.UseProgram(_progPrim);
+        _gl.Uniform1(_uDepthEnabled, _kDepth ? 1 : 0);
         _gl.BindVertexArray(_vao);
         _gl.ActiveTexture(TextureUnit.Texture0);
         _gl.BindTexture(TextureTarget.Texture2D, _vram.Texture);

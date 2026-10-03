@@ -26,15 +26,18 @@ public sealed partial class Gpu
     {
         var x = v.Precise ? v.Px : v.X;
         var y = v.Precise ? v.Py : v.Y;
-
+        
         return new HleVertex
         {
             X = x,
             Y = y,
-            Z = invalidW ? 1f : v.Pw,
-            HasGteZ = !invalidW,
-            Depth = v.Transform != 0 ? v.Pw : 0f,
+            Z = invalidW || !(v.Native || Pgxp.Pgxp.TextureCorrection) ? 1f : v.Pw,
+            HasGteZ = !invalidW && (v.Native || Pgxp.Pgxp.TextureCorrection),
+            Depth = v.Precise && v.PreciseW && v.Transform > 0 && float.IsFinite(v.Pw) && v.Pw > 0f ? v.Pw : 0f,
             R = (byte)v.R, G = (byte)v.G, B = (byte)v.B, U = (short)v.U, V = (short)v.V,
+            Camera = v.Camera,
+            Native = v.Native,
+            IgnoreDepth = v.IgnoreDepth,
             Transform = v.Transform
         };
     }
@@ -52,7 +55,7 @@ public sealed partial class Gpu
     {
         var spanX = Math.Max(a.X, Math.Max(b.X, c.X)) - Math.Min(a.X, Math.Min(b.X, c.X));
         var spanY = Math.Max(a.Y, Math.Max(b.Y, c.Y)) - Math.Min(a.Y, Math.Min(b.Y, c.Y));
-        if (spanX > 1023 || spanY > 511) return;
+        if (!(a.Native && b.Native && c.Native) && (spanX > 1023 || spanY > 511)) return;
         
         var be = GpuHle.Backend!;
         be.SetDrawEnv(CurEnv());

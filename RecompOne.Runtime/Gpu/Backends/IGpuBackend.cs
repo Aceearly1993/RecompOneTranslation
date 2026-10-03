@@ -14,6 +14,7 @@ public interface IGpuBackend
     void DrawRect(in HleRect r, in PrimFlags f);
     void DrawLine(in HleVertex a, in HleVertex b, in PrimFlags f);
     void FillRect(int x, int y, int w, int h, ushort color15);
+    void FillDisplayMargins(int x, int y, int w, int h, ushort color15) { }
     void CopyVram(int sx, int sy, int dx, int dy, int w, int h);
     void WriteVram(int x, int y, int w, int h, ReadOnlySpan<ushort> px);
     void ReadVram(int x, int y, int w, int h, Span<ushort> px);
@@ -22,6 +23,7 @@ public interface IGpuBackend
     int RegisterImage(ReadOnlySpan<byte> rgba, int width, int height);
 
     // these touch gl
+    void BeginScene() { }
     void Flush();
     void Present(in HleDispEnv disp);
 }

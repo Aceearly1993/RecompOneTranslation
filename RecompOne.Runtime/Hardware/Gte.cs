@@ -29,6 +29,62 @@ public static class Gte
     private static short ZSF3, ZSF4;
     private static uint FLAG;
 
+    public readonly record struct FloatVertex(float X, float Y, float Z, float ScreenX, float ScreenY, float Depth);
+    private static readonly float[] FloatV = new float[9];
+    private static readonly FloatVertex[] FloatFifo = new FloatVertex[3];
+    private static readonly float[] FloatRotation = new float[9];
+    private static readonly float[] FloatTranslation = new float[3];
+    private static float FloatH, FloatOfx, FloatOfy;
+    
+    public static  void LoadVertexFloat(int index, float x, float y, float z)
+    {
+        if ((uint)index >= 3u) return;
+        var offset = index * 3;
+        FloatV[offset] = x;
+        FloatV[offset + 1] = y;
+        FloatV[offset + 2] = z;
+    }
+    
+    public static void SetFloatTransform(ReadOnlySpan<float> rotation, ReadOnlySpan<float> translation, float h, float ofx, float ofy)
+    {
+        if (rotation.Length < 9 || translation.Length < 3) return;
+        rotation[..9].CopyTo(FloatRotation);
+        translation[..3].CopyTo(FloatTranslation);
+        FloatH = h;
+        FloatOfx = ofx;
+        FloatOfy = ofy;
+    }
+    
+    public static void RtptFloat()
+    {
+        for (var i = 0; i < 3; i++) FloatFifo[i] = ProjectFloat(i);
+    }
+    
+    public static void RtpsFloat()
+    {
+        FloatFifo[0] = FloatFifo[1];
+        FloatFifo[1] = FloatFifo[2];
+        FloatFifo[2] = ProjectFloat(0);
+    }
+    
+    public static FloatVertex ReadFloatVertex(int index)
+    {
+        return (uint)index < 3u ? FloatFifo[index] : default;
+    }
+    
+    private static FloatVertex ProjectFloat(int index)
+    {
+        var offset = index * 3;
+        var x = FloatV[offset];
+        var y = FloatV[offset + 1];
+        var z = FloatV[offset + 2];
+        var cx = FloatRotation[0] * x + FloatRotation[1] * y + FloatRotation[2] * z + FloatTranslation[0];
+        var cy = FloatRotation[3] * x + FloatRotation[4] * y + FloatRotation[5] * z + FloatTranslation[1];
+        var cz = FloatRotation[6] * x + FloatRotation[7] * y + FloatRotation[8] * z + FloatTranslation[2];
+        var divisor = MathF.Abs(cz) < 0.0001f ? MathF.CopySign(0.0001f, cz == 0f ? 1f : cz) : cz;
+        return new FloatVertex(cx, cy, cz, FloatOfx + cx * FloatH / divisor, FloatOfy + cy * FloatH / divisor, cz);
+    }
+    
     private const int SnapshotSlots = 8192;
     
     private static readonly short[] _snapRt = new short[SnapshotSlots * 9];

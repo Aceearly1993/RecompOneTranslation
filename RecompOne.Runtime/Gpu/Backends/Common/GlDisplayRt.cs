@@ -7,6 +7,8 @@ public sealed class GlDisplayRt
     public int X, Y, W, H;
     public int Margin;
     public uint Tex, Fbo;
+    private uint _depth;
+    private long _depthScene = -1;
     public bool Dirty;
     public long Stamp;
     public long LastDrawFrame;
@@ -51,8 +53,32 @@ public sealed class GlDisplayRt
         gl.Clear(ClearBufferMask.ColorBufferBit);
     }
 
+    public void PrepareDepth(GL gl, long scene)
+    {
+        if (_depth == 0)
+        {
+            _depth = gl.GenRenderbuffer();
+            gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, _depth);
+            gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.DepthComponent24, (uint)TexW, (uint)TexH);
+            gl.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthAttachment,
+                RenderbufferTarget.Renderbuffer, _depth);
+            _depthScene = -1;
+        }
+        if (_depthScene == scene) return;
+        gl.Disable(EnableCap.ScissorTest);
+        gl.DepthMask(true);
+        gl.ClearDepth(1.0);
+        gl.Clear(ClearBufferMask.DepthBufferBit);
+        _depthScene = scene;
+    }
+    
+    public void InvalidateDepth() => _depthScene = -1;
+    
     public void Destroy(GL gl)
     {
+        if (_depth != 0) gl.DeleteRenderbuffer(_depth);
+        _depth = 0;
+        _depthScene = -1;
         if (Fbo != 0) gl.DeleteFramebuffer(Fbo);
         if (Tex != 0) gl.DeleteTexture(Tex);
         Fbo = Tex = 0;

@@ -23,9 +23,13 @@ public static class SdkPatches
             "DecDCTin", "DecDCTout", "DecDCTinSync",
             "DecDCToutSync", "DecDCToutCallback"
         }),
+        ("libgte", "RecompOne.Runtime.Sdk.LibGte", new[]
+        {
+            "RotTransPers", "RotTransPers3", "RotTransPers4"
+        }),
         ("libgpu", "RecompOne.Runtime.Sdk.LibGpu", new[]
         {
-            "DrawOTag", "DrawSync", "PutDrawEnv", "PutDispEnv",
+            "DrawOTag", "DrawPrim", "DrawSync", "PutDrawEnv", "PutDispEnv",
             "LoadImage", "StoreImage", "MoveImage", "ClearImage",
             "SetVideoMode", "GetVideoMode"
         }),

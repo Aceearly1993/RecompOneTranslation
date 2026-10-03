@@ -70,7 +70,7 @@ internal sealed class DisplaySettingsSection : ISettingsSection
             DrawFrameRate();
         }
 
-        if (Pgxp.Pgxp.Shown)
+        if (Pgxp.Pgxp.Shown && Pgxp.Pgxp.Supported) //quite redundant but looks cleaner
         {
             ImGui.Separator();
             DrawPgxp();

@@ -76,10 +76,11 @@ internal static class GlShaders
                                  uniform vec2 uVertexOffset;
                                  uniform vec2 uPosBias;
                                  uniform vec2 uFbInv;
+                                    uniform bool uDepthEnabled;
 
                                  void main() {
                                      vec2 p = (inPos + uVertexOffset + uPosBias) * uFbInv - 1.0;
-                                     gl_Position = vec4(p * inW, 0.0, inW);
+                                     gl_Position = vec4(p * inW, uDepthEnabled ? inW - 2.0 : 0.0, inW);
 
                                      int inClut = int(inClutF + 0.5);
                                      int inTexpage = int(inTexpageF + 0.5);
@@ -331,12 +332,13 @@ internal static class GlShaders
                                     uniform vec2 uVertexOffset;
                                     uniform vec2 uPosBias;
                                     uniform vec2 uFbInv;
+                                    uniform bool uDepthEnabled;
 
                                     float bitAt(float v, float bit) { return floor(mod(v / bit, 2.0)); }
 
                                     void main() {
                                         vec2 p = (inPos + uVertexOffset + uPosBias) * uFbInv - 1.0;
-                                        gl_Position = vec4(p * inW, 0.0, inW);
+                                        gl_Position = vec4(p * inW, uDepthEnabled ? inW - 2.0 : 0.0, inW);
 
                                         float tp = floor(inTexpageF + 0.5);
                                         float clut = floor(inClutF + 0.5);

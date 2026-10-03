@@ -27,19 +27,10 @@ public static class InstructionEmitter
             };
     }
 
-    private static string Hook(string call)
+    private static string Hook(string call, bool pgxp)
     {
+        if (!pgxp) return "";
         return $" if (RecompOne.Runtime.Pgxp.Pgxp.CpuTracking) RecompOne.Runtime.Pgxp.PgxpCpu.{call};";
-    }
-
-    private static string Track1(string body, string call, int reg)
-    {
-        return $"{{ var _v = {R(reg)}; {body}{Hook(call)} }}";
-    }
-
-    private static string Track2(string body, string call, int rs, int rt)
-    {
-        return $"{{ var _s = {R(rs)}; var _t = {R(rt)}; {body}{Hook(call)} }}";
     }
 
     private static string Addr(int rs, short imm, bool moved = false, uint reloc = 0)
@@ -77,8 +68,22 @@ public static class InstructionEmitter
         };
     }
 
-    public static string EmitSingle(MipsInstruction i, Dictionary<uint, uint>? relocations = null)
+    public static string EmitSingle(MipsInstruction i, Dictionary<uint, uint>? relocations = null, bool pgxp = false)
     {
+        string Hook(string call) => InstructionEmitter.Hook(call, pgxp);
+
+        string Track1(string body, string call, int reg) => pgxp
+            ? $"{{ var _v = {R(reg)}; {body}{Hook(call)} }}"
+            : body;
+
+        string Track2(string body, string call, int rs, int rt)
+        {
+            if (pgxp) return $"{{ var _s = {R(rs)}; var _t = {R(rt)}; {body}{Hook(call)} }}";
+            body = body.Replace("_s", R(rs)).Replace("_t", R(rt));
+            return body.Contains("var _r") ? $"{{ {body} }}" : body;
+        }
+
+        const string projection = "RecompOne.Runtime.Gte";
         uint reloc = 0;
         var moved = relocations != null && relocations.TryGetValue(i.Vram, out reloc);
 
@@ -157,7 +162,7 @@ public static class InstructionEmitter
                 var lm = (cmd & (1u << 10)) != 0 ? "true" : "false";
                 return (cmd & 0x3F) switch
                 {
-                    0x01 => $"RecompOne.Runtime.Gte.Rtps({sf}, {lm});",
+                    0x01 => $"{projection}.Rtps({sf}, {lm});",
                     0x06 => "RecompOne.Runtime.Gte.Nclip();",
                     0x0C => $"RecompOne.Runtime.Gte.Cross({sf}, {lm});",
                     0x10 => $"RecompOne.Runtime.Gte.Dpcs({sf}, {lm});",
@@ -176,7 +181,7 @@ public static class InstructionEmitter
                     0x2A => $"RecompOne.Runtime.Gte.Dpct({sf}, {lm});",
                     0x2D => "RecompOne.Runtime.Gte.Avsz3();",
                     0x2E => "RecompOne.Runtime.Gte.Avsz4();",
-                    0x30 => $"RecompOne.Runtime.Gte.Rtpt({sf}, {lm});",
+                    0x30 => $"{projection}.Rtpt({sf}, {lm});",
                     0x3D => $"RecompOne.Runtime.Gte.Gpf({sf}, {lm});",
                     0x3E => $"RecompOne.Runtime.Gte.Gpl({sf}, {lm});",
                     0x3F => $"RecompOne.Runtime.Gte.NcctOp({sf}, {lm});",
@@ -227,9 +232,9 @@ public static class InstructionEmitter
             43 => $"mem.WriteU32({Addr(rs, imm, moved, reloc)}, {RT});" + Hook($"Sw({rt}, {Addr(rs, imm, moved, reloc)}, {RT})"),
             46 => $"mem.WriteWordRight({Addr(rs, imm, moved, reloc)}, {RT});" + Hook($"InvalidateMem({Addr(rs, imm, moved, reloc)}, {RT})"),
             50 =>
-                $"{{ var _lw = mem.ReadU32({Addr(rs, imm, moved, reloc)}); RecompOne.Runtime.Gte.Write({rt}, _lw); RecompOne.Runtime.Pgxp.PgxpCpu.Lwc2({rt}, {Addr(rs, imm, moved, reloc)}, _lw); }}",
+                $"{{ var _lw = mem.ReadU32({Addr(rs, imm, moved, reloc)}); RecompOne.Runtime.Gte.Write({rt}, _lw); {(pgxp ? $"RecompOne.Runtime.Pgxp.PgxpCpu.Lwc2({rt}, {Addr(rs, imm, moved, reloc)}, _lw);" : "")} }}",
             58 =>
-                $"{{ var _sw = RecompOne.Runtime.Gte.Read({rt}); mem.WriteU32({Addr(rs, imm, moved, reloc)}, _sw); RecompOne.Runtime.Pgxp.PgxpCpu.Swc2({rt}, {Addr(rs, imm, moved, reloc)}, _sw); }}",
+                $"{{ var _sw = RecompOne.Runtime.Gte.Read({rt}); mem.WriteU32({Addr(rs, imm, moved, reloc)}, _sw); {(pgxp ? $"RecompOne.Runtime.Pgxp.PgxpCpu.Swc2({rt}, {Addr(rs, imm, moved, reloc)}, _sw);" : "")} }}",
             _ => UnknownInstr(i, $"op=0x{op:X2}")
         };
     }
@@ -266,14 +271,14 @@ public static class InstructionEmitter
         {
             if (ds == null) return;
             //fixes delay slot as branch target bug
-            var line = EmitSingle(ds, ctx.Relocations);
+            var line = EmitSingle(ds, ctx.Relocations, ctx.Pgxp);
             if (!string.IsNullOrEmpty(line)) sb.AppendLine(ctx.Trail(ds, $"{indent}{line}"));
         }
 
         void DsInline()
         {
             if (ds == null) return;
-            var line = EmitSingle(ds, ctx.Relocations);
+            var line = EmitSingle(ds, ctx.Relocations, ctx.Pgxp);
             if (!string.IsNullOrEmpty(line)) sb.AppendLine(ctx.Trail(ds, $"{ind2}{line}"));
         }
 
@@ -352,7 +357,7 @@ public static class InstructionEmitter
             if (link)
             {
                 Ds();
-                sb.AppendLine(ctx.Trail(ctrl, $"{indent}c.RA = 0x{pc + 8:X8}u;" + Hook("Const(31, c.RA)")));
+                sb.AppendLine(ctx.Trail(ctrl, $"{indent}c.RA = 0x{pc + 8:X8}u;" + Hook("Const(31, c.RA)", ctx.Pgxp)));
                 sb.AppendLine(ctx.Trail(ctrl, $"{indent}if ({cond}) {{"));
                 if (InFunc(target)) sb.AppendLine(ctx.Trail(ctrl, $"{ind2}goto L{target:X8};"));
                 else CallOrDispatch(target, ind2);
@@ -370,7 +375,7 @@ public static class InstructionEmitter
         {
             var target = ctrl.JumpTarget;
             Ds();
-            sb.AppendLine(ctx.Trail(ctrl, $"{indent}c.RA = 0x{pc + 8:X8}u;" + Hook("Const(31, c.RA)")));
+            sb.AppendLine(ctx.Trail(ctrl, $"{indent}c.RA = 0x{pc + 8:X8}u;" + Hook("Const(31, c.RA)", ctx.Pgxp)));
             CallOrDispatch(target, indent);
             return;
         }
@@ -449,6 +454,7 @@ public static class InstructionEmitter
 
 public sealed class FunctionContext
 {
+    public bool Pgxp;
     public uint FuncStart;
     public uint FuncEnd;
     public Dictionary<uint, string> KnownFunctions = [];
