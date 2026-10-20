@@ -26,6 +26,8 @@ public sealed class ModInfo
     [JsonPropertyName("dependencies")]
     public string[] Dependencies { get; set; } = [];
 
+    [JsonPropertyName("defaultEnabled")] public bool DefaultEnabled { get; set; }
+
     /// <summary>Folder or zip this mod was loaded from</summary>
     [JsonIgnore]
     public string SourcePath { get; internal set; } = "";

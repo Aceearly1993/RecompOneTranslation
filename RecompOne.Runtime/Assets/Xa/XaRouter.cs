@@ -94,6 +94,8 @@ public static class XaRouter
             _outRate = rate;
             _outStereo = stereo;
 
+            if (PumpDirect()) return;
+
             if (_stream == null || _exhausted)
             {
                 XaAudio.DecodeSector(sec, 8, coding);
@@ -198,6 +200,29 @@ public static class XaRouter
             if (_stream.PositionSeconds * 1000 > _stream.Options.ExtendMaxMs) return false;
             rewindLba = _startLba;
             return true;
+        }
+    }
+
+    public static bool PumpDirect()
+    {
+        lock (_gate)
+        {
+            if (_stream == null || !_stream.Options.Direct) return false;
+            int buffered = XaAudio.BufferedSamples;
+            if (buffered >= 4096) return true;
+            int want = Math.Min(_frames.Length, 4096 - buffered);
+            int got = _stream.ReadPacked(_frames, want, _outRate);
+            if (got < want) Array.Clear(_frames, got, want - got);
+            XaAudio.PushFrames(_frames, want, _outRate);
+            return true;
+        }
+    }
+
+    public static void StopDirect()
+    {
+        lock (_gate)
+        {
+            if (_stream?.Options.Direct == true) Reset();
         }
     }
 

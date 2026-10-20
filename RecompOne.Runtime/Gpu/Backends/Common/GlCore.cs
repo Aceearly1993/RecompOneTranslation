@@ -19,7 +19,13 @@ public sealed class GlCore : IGpuBackend
 
     private readonly GL _gl;
     private readonly IGlVram _vram;
-    private readonly List<uint> _images = [];
+    private readonly Dictionary<int, uint> _images = [];
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(int Id, byte[] Pixels, int Width, int Height)> _pendingImages = new();
+    private int _imageId;
+    private readonly HashSet<int> _released = [];
+    private readonly System.Collections.Concurrent.ConcurrentQueue<int> _pendingReleases = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, CapturedImage> _captures = new();
+    private byte[] _captureBuffer = [];
     private readonly GlDisplayRt?[] _rts = new GlDisplayRt?[2];
     private long _rtStamp;
     private long _frame;
@@ -45,13 +51,7 @@ public sealed class GlCore : IGpuBackend
     private int _presentW, _presentH;
     private bool _presentNearest;
 
-    private uint _postProg, _postFbo, _postTex;
-    private int _postW, _postH, _postVersion = -1;
-    private int _uPostTexSize, _uPostOutputSize, _uPostTime, _uPostFrame;
-    private int _postFrame, _postParamVersion = -1;
-    private (string Name, float Value)[] _postParams = [];
-    private int[] _postParamLoc = [];
-    private readonly System.Diagnostics.Stopwatch _postClock = System.Diagnostics.Stopwatch.StartNew();
+    private SlangChain? _postChain;
 
     private readonly GlVertex[] _verts = new GlVertex[MaxVerts];
     private int _count;
@@ -685,23 +685,30 @@ public sealed class GlCore : IGpuBackend
     {
         if (GpuHle.WideAspect <= 0f) return;
         var rt = Classify();
-        if (rt == null || rt.Margin <= 0 || x > rt.X || y > rt.Y ||
-            x + w < rt.X + rt.W || y + h < rt.Y + rt.H) return;
-        
+        if (rt == null || rt.Margin <= 0 || x > rt.X || x + w < rt.X + rt.W) return;
+
+        var top = Math.Max(y, rt.Y) - rt.Y;
+        var bottom = Math.Min(y + h, rt.Y + rt.H) - rt.Y;
+        if (bottom <= top) return;
+
         Flush();
-        var left = (uint)(rt.Margin * GlVram.Scale);
-        var right = (uint)((rt.Margin + rt.W) * GlVram.Scale);
+        ClearMargin(rt);
+
+        var s = GlVram.Scale;
+        var left = rt.Margin * s;
+        var right = (rt.Margin + rt.W) * s;
+        var bandY = top * s;
+        var bandH = (uint)((bottom - top) * s);
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, rt.Fbo);
         _gl.Enable(EnableCap.ScissorTest);
         _gl.ClearColor((color15 & 0x1F) / 31f, ((color15 >> 5) & 0x1F) / 31f,
             ((color15 >> 10) & 0x1F) / 31f, 1f);
-        _gl.Scissor(0, 0, left, (uint)rt.TexH);
+        _gl.Scissor(0, bandY, (uint)left, bandH);
         _gl.Clear(ClearBufferMask.ColorBufferBit);
-        _gl.Scissor((int)right, 0, (uint)rt.TexW - right, (uint)rt.TexH);
+        _gl.Scissor(right, bandY, (uint)(rt.TexW - right), bandH);
         _gl.Clear(ClearBufferMask.ColorBufferBit);
         _gl.Disable(EnableCap.ScissorTest);
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
-        rt.LastMarginFrame = _frame;
     }
     
     private void ClearMargin(GlDisplayRt rt)
@@ -760,24 +767,129 @@ public sealed class GlCore : IGpuBackend
 
     public int RegisterImage(ReadOnlySpan<byte> rgba, int width, int height)
     {
+        if (width <= 0 || height <= 0 || rgba.Length != checked(width * height * 4))
+            throw new ArgumentException("Expected width * height * 4 RGBA bytes.");
+        int id = Interlocked.Increment(ref _imageId) - 1;
+        _pendingImages.Enqueue((id, rgba.ToArray(), width, height));
+        return id;
+    }
+
+    public int ReserveImage()
+    {
+        return Interlocked.Increment(ref _imageId) - 1;
+    }
+
+    public void CaptureTarget(int image, IReadOnlyList<CaptureOverlay> overlays)
+    {
+        if (image < 0) return;
+        Flush();
+        UploadImages();
+        if (_released.Remove(image)) return;
+        var rt = Classify();
+        if (rt == null) return;
+
+        int width = rt.TexW, height = rt.TexH, size = width * height * 4;
+        if (_captureBuffer.Length < size) _captureBuffer = new byte[size];
+        var pixels = _captureBuffer.AsSpan(0, size);
+
+        _gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, rt.Fbo);
+        _gl.ReadPixels(0, 0, (uint)width, (uint)height, PixelFormat.Rgba, PixelType.UnsignedByte, pixels);
+        _gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, 0);
+
+        for (var i = 0; i < size; i += 4)
+            pixels[i + 3] = (byte)((pixels[i] | pixels[i + 1] | pixels[i + 2]) >= 8 ? 255 : 0);
+
+        foreach (var overlay in overlays)
+            Composite(pixels, width, rt, overlay);
+
+        if (!_images.TryGetValue(image, out var texture))
+        {
+            texture = _gl.GenTexture();
+            _images[image] = texture;
+        }
+
         _gl.ActiveTexture(TextureUnit.Texture7);
-        var t = _gl.GenTexture();
-        _gl.BindTexture(TextureTarget.Texture2D, t);
+        _gl.BindTexture(TextureTarget.Texture2D, texture);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Nearest);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Nearest);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
         _gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.Rgba8, (uint)width, (uint)height, 0,
-            PixelFormat.Rgba, PixelType.UnsignedByte, rgba);
+            PixelFormat.Rgba, PixelType.UnsignedByte, (ReadOnlySpan<byte>)pixels);
         _gl.ActiveTexture(TextureUnit.Texture0);
 
-        _images.Add(t);
-        return _images.Count - 1;
+        _captures[image] = new CapturedImage(rt.Margin, rt.W, rt.H);
+    }
+
+    private static void Composite(Span<byte> pixels, int width, GlDisplayRt rt, CaptureOverlay overlay)
+    {
+        var s = GlVram.Scale;
+        for (var y = 0; y < overlay.Height; y++)
+        {
+            var ty = overlay.Y + y;
+            if (ty < 0 || ty >= rt.H) continue;
+            for (var x = 0; x < overlay.Width; x++)
+            {
+                var source = (y * overlay.Width + x) * 4;
+                if (overlay.Rgba[source + 3] < 128) continue;
+                var tx = overlay.X + x + rt.Margin;
+                if (tx < 0 || tx >= rt.Wide1x) continue;
+
+                for (var sy = 0; sy < s; sy++)
+                for (var sx = 0; sx < s; sx++)
+                {
+                    var target = ((ty * s + sy) * width + tx * s + sx) * 4;
+                    if (overlay.Behind && pixels[target + 3] != 0) continue;
+                    pixels[target] = overlay.Rgba[source];
+                    pixels[target + 1] = overlay.Rgba[source + 1];
+                    pixels[target + 2] = overlay.Rgba[source + 2];
+                    pixels[target + 3] = 255;
+                }
+            }
+        }
+    }
+
+    public bool TryGetCapture(int image, out CapturedImage capture)
+    {
+        return _captures.TryGetValue(image, out capture);
+    }
+
+    public void ReleaseImage(int image)
+    {
+        _captures.TryRemove(image, out _);
+        _pendingReleases.Enqueue(image);
+    }
+
+    private void UploadImages()
+    {
+        while (_pendingReleases.TryDequeue(out var released))
+        {
+            if (_images.Remove(released, out var texture)) _gl.DeleteTexture(texture);
+            else _released.Add(released);
+        }
+
+        while (_pendingImages.TryDequeue(out var image))
+        {
+            if (_released.Remove(image.Id)) continue;
+            _gl.ActiveTexture(TextureUnit.Texture7);
+            var t = _gl.GenTexture();
+            _gl.BindTexture(TextureTarget.Texture2D, t);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Nearest);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Nearest);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
+            _gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.Rgba8, (uint)image.Width, (uint)image.Height, 0,
+                PixelFormat.Rgba, PixelType.UnsignedByte, image.Pixels);
+            _gl.ActiveTexture(TextureUnit.Texture0);
+
+            _images.Add(image.Id, t);
+        }
     }
 
     public void Flush()
     {
         if (_count == 0) return;
+        UploadImages();
 
         var rt = _kTarget;
         uint destTex;
@@ -876,10 +988,10 @@ public sealed class GlCore : IGpuBackend
         _gl.BindTexture(TextureTarget.Texture2D, _vram.Texture);
         _gl.ActiveTexture(TextureUnit.Texture1);
         _gl.BindTexture(TextureTarget.Texture2D, destTex);
-        if (_kImage >= 0 && _kImage < _images.Count)
+        if (_images.TryGetValue(_kImage, out uint imageTexture))
         {
             _gl.ActiveTexture(TextureUnit.Texture2);
-            _gl.BindTexture(TextureTarget.Texture2D, _images[_kImage]);
+            _gl.BindTexture(TextureTarget.Texture2D, imageTexture);
         }
 
         if (_kRepTex != 0)
@@ -1109,110 +1221,16 @@ public sealed class GlCore : IGpuBackend
 
         _gl.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
 
-        var outTex = ApplyPostFx(_presentTex, fbW, fbH);
+        var outTex = _presentTex;
+        int outTexW = fbW, outTexH = fbH;
+        if (PostFx.Active)
+        {
+            _postChain ??= new SlangChain(_gl);
+            outTex = _postChain.Apply(_presentTex, fbW, fbH, w1x, h1x, outW, outH, aspect, out outTexW, out outTexH);
+        }
 
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
-        return (outTex, fbW, fbH, aspect);
-    }
-
-    //support for post-fx shaders to be loaded, so you can have cool shaders (this was too anonying to implement)
-    private unsafe uint ApplyPostFx(uint srcTex, int w, int h)
-    {
-        if (!PostFx.Active) return srcTex;
-        if (!EnsurePostProgram()) return srcTex;
-
-        if (_postTex == 0)
-        {
-            _postTex = _gl.GenTexture();
-            _gl.BindTexture(TextureTarget.Texture2D, _postTex);
-            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Linear);
-            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Linear);
-            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
-            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
-            _postFbo = _gl.GenFramebuffer();
-        }
-
-        if (w != _postW || h != _postH)
-        {
-            _gl.BindTexture(TextureTarget.Texture2D, _postTex);
-            _gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.Rgba8, (uint)w, (uint)h, 0,
-                PixelFormat.Rgba, PixelType.UnsignedByte, null);
-            _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _postFbo);
-            _gl.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0,
-                TextureTarget.Texture2D, _postTex, 0);
-            _postW = w;
-            _postH = h;
-        }
-
-        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _postFbo);
-        _gl.Viewport(0, 0, (uint)w, (uint)h);
-        _gl.Disable(EnableCap.DepthTest);
-        _gl.Disable(EnableCap.Blend);
-        _gl.Disable(EnableCap.ScissorTest);
-
-        _gl.UseProgram(_postProg);
-        _gl.BindVertexArray(_presentVao);
-        _gl.ActiveTexture(TextureUnit.Texture0);
-        _gl.BindTexture(TextureTarget.Texture2D, srcTex);
-        if (_uPostTexSize >= 0) _gl.Uniform2(_uPostTexSize, (float)w, h);
-        if (_uPostOutputSize >= 0) _gl.Uniform2(_uPostOutputSize, (float)w, h);
-        if (_uPostTime >= 0) _gl.Uniform1(_uPostTime, (float)_postClock.Elapsed.TotalSeconds);
-        if (_uPostFrame >= 0) _gl.Uniform1(_uPostFrame, _postFrame++);
-        ApplyPostParams();
-        _gl.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
-
-        return _postTex;
-    }
-
-    private void ApplyPostParams()
-    {
-        var version = PostFx.ParamVersion;
-        if (version != _postParamVersion)
-        {
-            _postParamVersion = version;
-            _postParams = PostFx.SnapshotParams();
-            _postParamLoc = new int[_postParams.Length];
-            for (var i = 0; i < _postParams.Length; i++)
-                _postParamLoc[i] = _gl.GetUniformLocation(_postProg, _postParams[i].Name);
-        }
-
-        for (var i = 0; i < _postParams.Length; i++)
-            if (_postParamLoc[i] >= 0)
-                _gl.Uniform1(_postParamLoc[i], _postParams[i].Value);
-    }
-
-    private bool EnsurePostProgram()
-    {
-        var version = PostFx.Version;
-        if (version == _postVersion) return _postProg != 0;
-        _postVersion = version;
-
-        if (_postProg != 0)
-        {
-            _gl.DeleteProgram(_postProg);
-            _postProg = 0;
-        }
-
-        var src = PostFx.Source;
-        if (src == null) return false;
-
-        _postProg = GlShaders.Build(_gl, GlShaders.FullscreenVs, src, "postfx", out var error);
-        if (_postProg == 0)
-        {
-            PostFx.Error = error ?? "shader fails to build";
-            Console.WriteLine($"[gpu-pfx] {PostFx.Error}");
-            return false;
-        }
-
-        PostFx.Error = null;
-        _gl.UseProgram(_postProg);
-        _gl.Uniform1(_gl.GetUniformLocation(_postProg, "uTex"), 0);
-        _uPostTexSize = _gl.GetUniformLocation(_postProg, "uTexSize");
-        _uPostOutputSize = _gl.GetUniformLocation(_postProg, "uOutputSize");
-        _uPostTime = _gl.GetUniformLocation(_postProg, "uTime");
-        _uPostFrame = _gl.GetUniformLocation(_postProg, "uFrame");
-        _postParamVersion = -1;
-        return true;
+        return (outTex, outTexW, outTexH, aspect);
     }
 
     private unsafe void EnsurePresentSize(int w, int h, bool nearest)
@@ -1242,8 +1260,6 @@ public sealed class GlCore : IGpuBackend
         if (_progPresent24 != 0) _gl.DeleteProgram(_progPresent24);
         if (_presentTex != 0) _gl.DeleteTexture(_presentTex);
         if (_presentFbo != 0) _gl.DeleteFramebuffer(_presentFbo);
-        if (_postProg != 0) _gl.DeleteProgram(_postProg);
-        if (_postTex != 0) _gl.DeleteTexture(_postTex);
-        if (_postFbo != 0) _gl.DeleteFramebuffer(_postFbo);
+        _postChain?.Dispose();
     }
 }

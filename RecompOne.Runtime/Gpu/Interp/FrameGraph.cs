@@ -11,7 +11,8 @@ internal enum GraphOp : byte
     Fill,
     DisplayMargins,
     CopyVram,
-    WriteVram
+    WriteVram,
+    Capture
 }
 
 internal struct TriRecord

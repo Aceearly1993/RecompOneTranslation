@@ -5,11 +5,16 @@ using RecompOne.Runtime.Config;
 
 namespace RecompOne.Runtime.Host.Window;
 
-internal sealed class InputSettingsSection : ISettingsSection
+internal sealed class InputPage
 {
-    public string Id => "input";
-    public string TitleKey => "settings.input";
-    public int Order => 0;
+    public static void Register()
+    {
+        var page = new InputPage();
+        SettingsPages.Page(SettingsPages.Input, "settings.input", 0)
+            .Add("bindings", page.Draw, 0);
+    }
+
+    private PortSettings Port => Settings.System.Input[_padIndex];
 
     private static readonly (string Label, Func<KeyBindings, string> GetKey, Action<KeyBindings, string> SetKey,
         Func<GamepadBindings, int[]> GetPad, Action<GamepadBindings, int[]> SetPad)[] _rows =
@@ -37,7 +42,7 @@ internal sealed class InputSettingsSection : ISettingsSection
     private int _remapRow = -1;
     private bool _remapAdd;
 
-    public void Draw()
+    private void Draw()
     {
         DrawDeviceSelector();
         ImGui.Spacing();
@@ -60,7 +65,7 @@ internal sealed class InputSettingsSection : ISettingsSection
 
         DrawBindings();
 
-        if (_gamepadMode && ConfigManager.Game.KindFor(_padIndex) == PadKind.Analog)
+        if (_gamepadMode && Port.Kind == PadKind.Analog)
         {
             ImGui.Spacing();
             DrawStickAxes();
@@ -69,28 +74,11 @@ internal sealed class InputSettingsSection : ISettingsSection
         ImGui.Spacing();
         if (ImGui.Button(Localization.T("settings.input.reset_defaults")))
         {
-            if (!_gamepadMode)
-            {
-                if (_padIndex == 0) ConfigManager.Game.Keys = new KeyBindings();
-                else ConfigManager.Game.Keys2 = KeyBindings.Empty();
-            }
-            else
-            {
-                var analog = ConfigManager.Game.KindFor(_padIndex) == PadKind.Analog;
-                if (_padIndex == 0)
-                {
-                    if (analog) ConfigManager.Game.PadAnalog = GamepadBindings.DefaultAnalog();
-                    else ConfigManager.Game.Pad = new GamepadBindings();
-                }
-                else
-                {
-                    if (analog) ConfigManager.Game.PadAnalog2 = GamepadBindings.Empty();
-                    else ConfigManager.Game.Pad2 = GamepadBindings.Empty();
-                }
-            }
+            if (_gamepadMode) Port.ResetGamepad(_padIndex);
+            else Port.ResetKeys(_padIndex);
 
             _remapRow = -1;
-            ConfigManager.SaveGame();
+            Settings.MarkDirty();
         }
     }
 
@@ -107,7 +95,7 @@ internal sealed class InputSettingsSection : ISettingsSection
 
     private void DrawStickAxes()
     {
-        var pad = ConfigManager.Game.PadFor(_padIndex);
+        var pad = Port.Gamepad;
         ImGuiEx.TextColored(new Vector4(0.6f, 0.6f, 0.65f, 1f), Localization.T("settings.input.sticks"));
 
         foreach (var (label, get, set) in _axisRows)
@@ -122,7 +110,7 @@ internal sealed class InputSettingsSection : ISettingsSection
                     if (ImGui.Selectable(AxisNames[i], i == cur))
                     {
                         set(pad, i);
-                        ConfigManager.SaveGame();
+                        Settings.MarkDirty();
                     }
 
                 ImGui.EndCombo();
@@ -134,9 +122,7 @@ internal sealed class InputSettingsSection : ISettingsSection
 
     private void DrawPadKind()
     {
-        var cfg = ConfigManager.Game;
-        var kind = _padIndex == 0 ? cfg.PadKind : cfg.PadKind2;
-        var index = (int)kind;
+        var index = (int)Port.Kind;
 
         ImGui.SetNextItemWidth(220f);
         if (ImGui.BeginCombo(Localization.T("settings.input.kind"), Localization.T(PadKindKeys[index])))
@@ -144,9 +130,8 @@ internal sealed class InputSettingsSection : ISettingsSection
             for (var i = 0; i < PadKindKeys.Length; i++)
                 if (ImGui.Selectable(Localization.T(PadKindKeys[i]), i == index))
                 {
-                    if (_padIndex == 0) cfg.PadKind = (PadKind)i;
-                    else cfg.PadKind2 = (PadKind)i;
-                    ConfigManager.SaveGame();
+                    Port.Kind = (PadKind)i;
+                    Settings.MarkDirty();
                 }
 
             ImGui.EndCombo();
@@ -204,7 +189,7 @@ internal sealed class InputSettingsSection : ISettingsSection
     private void DrawDeviceCombo()
     {
         var devices = InputManager.Devices;
-        var current = _padIndex == 0 ? ConfigManager.Game.PadDevice : ConfigManager.Game.PadDevice2;
+        var current = Port.Device;
 
         var preview = Localization.T("settings.input.device.auto");
         foreach (var d in devices)
@@ -240,9 +225,8 @@ internal sealed class InputSettingsSection : ISettingsSection
 
     private void SetDevice(string id)
     {
-        if (_padIndex == 0) ConfigManager.Game.PadDevice = id;
-        else ConfigManager.Game.PadDevice2 = id;
-        ConfigManager.SaveGame();
+        Port.Device = id;
+        Settings.MarkDirty();
         InputManager.RefreshDevices();
     }
 
@@ -257,8 +241,8 @@ internal sealed class InputSettingsSection : ISettingsSection
             ImGuiTableColumnFlags.WidthStretch);
         ImGui.TableHeadersRow();
 
-        var keys = _padIndex == 0 ? ConfigManager.Game.Keys : ConfigManager.Game.Keys2;
-        var pad = ConfigManager.Game.PadFor(_padIndex);
+        var keys = Port.Keys;
+        var pad = Port.Gamepad;
 
         for (var i = 0; i < _rows.Length; i++)
         {
@@ -310,7 +294,7 @@ internal sealed class InputSettingsSection : ISettingsSection
                         }
 
                         _remapRow = -1;
-                        ConfigManager.SaveGame();
+                        Settings.MarkDirty();
                     }
                 }
             }
@@ -328,7 +312,7 @@ internal sealed class InputSettingsSection : ISettingsSection
                     {
                         setKey(keys, p);
                         _remapRow = -1;
-                        ConfigManager.SaveGame();
+                        Settings.MarkDirty();
                     }
                 }
             }

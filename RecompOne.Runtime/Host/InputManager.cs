@@ -96,14 +96,14 @@ internal static unsafe class InputManager
 
     public static void Poll()
     {
-        Controller.Analog = ConfigManager.Game.PadKind == PadKind.Analog;
-        Controller.Analog2 = ConfigManager.Game.PadKind2 == PadKind.Analog;
+        Controller.Analog = Settings.System.Input[0].Kind == PadKind.Analog;
+        Controller.Analog2 = Settings.System.Input[1].Kind == PadKind.Analog;
 
 
         PollGamepadEvents();
         PollKeyboard();
         PollGamepads();
-        Controller.Connected2 = _pad1 != null || HasAnyKey(ConfigManager.Game.Keys2);
+        Controller.Connected2 = _pad1 != null || Settings.System.Input[1].Keys.Any;
     }
 
     public static int? GetFirstPressedPadButton(int pad = 0)
@@ -255,8 +255,8 @@ internal static unsafe class InputManager
         }
 
         var used = new HashSet<int>();
-        _pad0 = OpenFor(found, ConfigManager.Game.PadDevice, used);
-        _pad1 = OpenFor(found, ConfigManager.Game.PadDevice2, used);
+        _pad0 = OpenFor(found, Settings.System.Input[0].Device, used);
+        _pad1 = OpenFor(found, Settings.System.Input[1].Device, used);
     }
 
     private static GameController* OpenFor(List<(int Index, string Id, string Name)> found, string wanted,
@@ -303,8 +303,8 @@ internal static unsafe class InputManager
             return;
         }
 
-        Controller.State = KeyState(kb, ConfigManager.Game.Keys);
-        Controller.State2 = KeyState(kb, ConfigManager.Game.Keys2);
+        Controller.State = KeyState(kb, Settings.System.Input[0].Keys);
+        Controller.State2 = KeyState(kb, Settings.System.Input[1].Keys);
     }
 
     private static ushort KeyState(IKeyboard kb, KeyBindings cfg)
@@ -337,21 +337,13 @@ internal static unsafe class InputManager
         return s;
     }
 
-    private static bool HasAnyKey(KeyBindings cfg)
-    {
-        return cfg.Cross.Length > 0 || cfg.Circle.Length > 0 || cfg.Square.Length > 0 || cfg.Triangle.Length > 0 ||
-               cfg.L1.Length > 0 || cfg.R1.Length > 0 || cfg.L2.Length > 0 || cfg.R2.Length > 0 ||
-               cfg.L3.Length > 0 || cfg.R3.Length > 0 || cfg.Start.Length > 0 || cfg.Select.Length > 0 ||
-               cfg.Up.Length > 0 || cfg.Down.Length > 0 || cfg.Left.Length > 0 || cfg.Right.Length > 0;
-    }
-
     private static void PollGamepads()
     {
         if (_sdl == null) return;
 
         if (_pad0 != null)
         {
-            var bind = ConfigManager.Game.PadFor(0);
+            var bind = Settings.System.Input[0].Gamepad;
             Controller.State = PadState(_pad0, bind, Controller.State);
             Controller.LeftX = Axis(_pad0, bind.LeftStickX);
             Controller.LeftY = Axis(_pad0, bind.LeftStickY);
@@ -361,7 +353,7 @@ internal static unsafe class InputManager
 
         if (_pad1 != null)
         {
-            var bind = ConfigManager.Game.PadFor(1);
+            var bind = Settings.System.Input[1].Gamepad;
             Controller.State2 = PadState(_pad1, bind, Controller.State2);
             Controller.LeftX2 = Axis(_pad1, bind.LeftStickX);
             Controller.LeftY2 = Axis(_pad1, bind.LeftStickY);

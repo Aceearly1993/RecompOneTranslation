@@ -83,6 +83,8 @@ public sealed class AssetStats
 
 public sealed class AssetReplacerManager
 {
+    private sealed record DirectTextureFolder(int Priority, long Sequence, Dictionary<ulong, TextureAsset> Textures);
+
     private static readonly Lazy<AssetReplacerManager> _instance = new(() => new AssetReplacerManager());
     public static AssetReplacerManager Instance => _instance.Value;
 
@@ -92,6 +94,8 @@ public sealed class AssetReplacerManager
     private readonly List<XaEntry> _runtimeXa = [];
     private readonly Dictionary<ulong, TextureAsset> _texExact = [];
     private readonly Dictionary<ulong, TextureAsset> _texAny = [];
+    private readonly Dictionary<string, DirectTextureFolder> _directTextureFolders = new(StringComparer.OrdinalIgnoreCase);
+    private long _textureFolderSequence;
     private readonly Dictionary<ulong, ClutAsset> _cluts = [];
     private readonly List<TextureRule> _rules = [];
 
@@ -247,6 +251,46 @@ public sealed class AssetReplacerManager
         Textures.TextureResolver.Invalidate();
         Xa.XaRouter.Reset();
         LoadAll(string.IsNullOrEmpty(Root) ? null : Root);
+    }
+
+    public void LoadTextureFolder(string id, string directory, int priority)
+    {
+        var replacements = new Dictionary<ulong, TextureAsset>();
+        if (Directory.Exists(directory))
+        {
+            foreach (var path in Directory.EnumerateFiles(directory, "*.png", SearchOption.TopDirectoryOnly))
+            {
+                var name = Path.GetFileNameWithoutExtension(path);
+                if (!AssetHash.TryParseHex(name, out var hash)) continue;
+                replacements[hash] = new TextureAsset
+                {
+                    IndexHash = hash,
+                    Mode = TextureMode.Rgba,
+                    FileName = path,
+                    PackId = id,
+                    Open = () => File.Exists(path) ? File.ReadAllBytes(path) : null
+                };
+            }
+        }
+
+        lock (_gate)
+        {
+            _directTextureFolders[id] = new DirectTextureFolder(priority, ++_textureFolderSequence, replacements);
+            RefreshHasTextures();
+        }
+
+        Textures.TextureResolver.Invalidate();
+    }
+
+    public void UnloadTextureFolder(string id)
+    {
+        lock (_gate)
+        {
+            _directTextureFolders.Remove(id);
+            RefreshHasTextures();
+        }
+
+        Textures.TextureResolver.Invalidate();
     }
 
     private void IndexXa(AssetPack pack)
@@ -413,7 +457,8 @@ public sealed class AssetReplacerManager
 
     private void RefreshHasTextures()
     {
-        _hasTextures = _texExact.Count > 0 || _texAny.Count > 0 || _cluts.Count > 0 || _rules.Count > 0;
+        _hasTextures = _directTextureFolders.Values.Any(folder => folder.Textures.Count > 0) ||
+                       _texExact.Count > 0 || _texAny.Count > 0 || _cluts.Count > 0 || _rules.Count > 0;
     }
 
     public bool HasRules
@@ -444,6 +489,18 @@ public sealed class AssetReplacerManager
         if (!Enabled) return null;
         lock (_gate)
         {
+            TextureAsset? direct = null;
+            var bestPriority = int.MinValue;
+            var bestSequence = long.MinValue;
+            foreach (var folder in _directTextureFolders.Values)
+            {
+                if (folder.Priority < bestPriority || !folder.Textures.TryGetValue(indexHash, out var texture)) continue;
+                if (folder.Priority == bestPriority && folder.Sequence < bestSequence) continue;
+                direct = texture;
+                bestPriority = folder.Priority;
+                bestSequence = folder.Sequence;
+            }
+            if (direct != null) return direct;
             if (_texExact.TryGetValue(Combine(indexHash, clutHash), out var exact)) return exact;
             return _texAny.GetValueOrDefault(indexHash);
         }

@@ -14,10 +14,10 @@ public static class MainMenuBar
         MenuRegistry.Menu("menu.system")
             .Popup<SettingsPopup>("menu.system.settings")
             .Separator("menu.system.view_separator")
-            .Check("menu.system.show_menu_bar", () => !ConfigManager.View.HideTopBar, ShowMenuBar, "F1")
-            .Check("menu.system.autohide_menu_bar", () => ConfigManager.View.AutoHideMenuBar, AutoHideMenuBar)
+            .Check("menu.system.show_menu_bar", static () => !InterfaceOptions.HideMenuBar, static show => InterfaceOptions.HideMenuBar.Value = !show, "F1")
+            .Check("menu.system.autohide_menu_bar", static () => InterfaceOptions.AutoHideMenuBar, static on => InterfaceOptions.AutoHideMenuBar.Value = on)
             .Disabled()
-            .Check("menu.system.fullscreen", () => ConfigManager.View.Fullscreen, Fullscreen, "F11")
+            .Check("menu.system.fullscreen", static () => DisplayOptions.Fullscreen, Fullscreen, "F11")
             .Separator("menu.system.reset_separator")
             .Item("menu.system.hard_reset", Runtime.HardReset)
             .Separator("menu.system.quit_separator")
@@ -84,7 +84,7 @@ public static class MainMenuBar
 
     private static void DrawFps()
     {
-        if (!ConfigManager.View.ShowFps) return;
+        if (!InterfaceOptions.ShowFps) return;
 
         var text = $"{FrameClock.PresentFps:F0} / {FrameClock.Fps:F0} fps";
         var width = ImGuiNET.ImGui.CalcTextSize(text).X;
@@ -96,26 +96,13 @@ public static class MainMenuBar
 
     private static void ResetView()
     {
-        ConfigManager.ResetView(PanelManager.Panels);
+        InterfaceLayout.Reset(PanelManager.Panels);
         HostWindow.RequestLayout();
-    }
-
-    private static void ShowMenuBar(bool show)
-    {
-        ConfigManager.View.HideTopBar = !show;
-        ConfigManager.SaveView(PanelManager.Panels);
-    }
-
-    private static void AutoHideMenuBar(bool autoHide)
-    {
-        ConfigManager.View.AutoHideMenuBar = autoHide;
-        ConfigManager.SaveView(PanelManager.Panels);
     }
 
     private static void Fullscreen(bool fullscreen)
     {
-        ConfigManager.View.Fullscreen = fullscreen;
+        DisplayOptions.Fullscreen.Value = fullscreen;
         HostWindow.SetFullscreen(fullscreen);
-        ConfigManager.SaveView(PanelManager.Panels);
     }
 }

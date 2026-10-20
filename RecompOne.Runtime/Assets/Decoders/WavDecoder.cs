@@ -36,6 +36,7 @@ public sealed class WavDecoder : IPcmDecoder
             ReadExact(ch);
             var id = $"{(char)ch[0]}{(char)ch[1]}{(char)ch[2]}{(char)ch[3]}";
             var size = BitConverter.ToUInt32(ch[4..]);
+            var chunkStart = _s.Position;
             var next = _s.Position + size + (size & 1);
 
             if (id == "fmt ")
@@ -55,7 +56,7 @@ public sealed class WavDecoder : IPcmDecoder
                 dataBytes = size;
             }
 
-            if (next <= _s.Position) break;
+            if (next < chunkStart || next > _s.Length) throw new InvalidDataException("Invalid WAVE chunk size.");
             _s.Position = next;
         }
 

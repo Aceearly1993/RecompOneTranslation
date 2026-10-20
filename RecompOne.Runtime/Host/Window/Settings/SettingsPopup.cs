@@ -7,44 +7,39 @@ public sealed class SettingsPopup : Popup
 {
     private const float SidebarWidth = 180f;
 
-    private string _selectedId = "";
+    private static string _selectedId = "";
 
     protected override string TitleKey => "settings.title";
     protected override Vector2 Size => new(780f, 500f);
 
+    internal static void Select(string? id)
+    {
+        if (!string.IsNullOrEmpty(id)) _selectedId = id;
+    }
+
     protected override void DrawContent()
     {
-        var sections = SettingsRegistry.Sections;
-        var current = ResolveSelection(sections);
+        var pages = SettingsPages.All.Where(p => p.IsVisible).ToArray();
+        var current = Array.Find(pages, p => p.Id == _selectedId) ?? pages.FirstOrDefault();
+        if (current != null) _selectedId = current.Id;
 
-        DrawSidebar(sections, current);
+        DrawSidebar(pages, current);
         ImGui.SameLine();
-        DrawContent(current);
+        DrawPage(current);
     }
 
-    private ISettingsSection? ResolveSelection(IReadOnlyList<ISettingsSection> sections)
-    {
-        if (sections.Count == 0) return null;
-        foreach (var section in sections)
-            if (section.Id == _selectedId)
-                return section;
-
-        _selectedId = sections[0].Id;
-        return sections[0];
-    }
-
-    private void DrawSidebar(IReadOnlyList<ISettingsSection> sections, ISettingsSection? current)
+    private static void DrawSidebar(SettingsPage[] pages, SettingsPage? current)
     {
         ImGui.BeginChild("##settings-sidebar", new Vector2(SidebarWidth, 0f), ImGuiChildFlags.Border);
 
-        foreach (var section in sections)
-            if (ImGui.Selectable($"{Localization.T(section.TitleKey)}##sec-{section.Id}", current == section))
-                _selectedId = section.Id;
+        foreach (var page in pages)
+            if (ImGui.Selectable($"{Localization.T(page.TitleKey)}##page-{page.Id}", current == page))
+                _selectedId = page.Id;
 
         ImGui.EndChild();
     }
 
-    private static void DrawContent(ISettingsSection? current)
+    private static void DrawPage(SettingsPage? current)
     {
         ImGui.BeginChild("##settings-content", Vector2.Zero, ImGuiChildFlags.Border);
 
@@ -56,9 +51,9 @@ public sealed class SettingsPopup : Popup
         {
             ImGui.SeparatorText(Localization.T(current.TitleKey));
             ImGui.Spacing();
+            ImGui.PushID(current.Id);
             current.Draw();
-            foreach (var extension in SettingsRegistry.GetExtensions(current.Id))
-                extension();
+            ImGui.PopID();
         }
 
         ImGui.EndChild();

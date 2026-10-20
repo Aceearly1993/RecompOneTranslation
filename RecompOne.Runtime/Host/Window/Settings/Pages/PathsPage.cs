@@ -5,21 +5,21 @@ using RecompOne.Runtime.Config;
 
 namespace RecompOne.Runtime.Host.Window;
 
-internal sealed class PathsSettingsSection : ISettingsSection
+internal static class PathsPage
 {
-    public string Id => "paths";
-    public string TitleKey => "settings.paths";
-    public int Order => 20;
+    private static string _discError = "";
 
-    private string _discError = "";
-
-    public void Draw()
+    public static void Register()
     {
-        var game = ConfigManager.Game;
+        SettingsPages.Page(SettingsPages.Paths, "settings.paths", 20)
+            .Add("disc", DrawDisc, 0, "settings.paths.disc")
+            .Add("memory_cards", DrawMemoryCards, 100, "settings.paths.memory_cards");
+    }
 
-        ImGui.SeparatorText(Localization.T("settings.paths.disc"));
-
-        if (PathRow("##disc", game.CdPath, "cue,chd", false, out var disc))
+    private static void DrawDisc()
+    {
+        var system = Settings.System;
+        if (PathRow("##disc", system.DiscPath, "cue,chd", false, out var disc))
         {
             var problem = Runtime.ValidateDisc(disc);
             if (problem != null)
@@ -29,42 +29,42 @@ internal sealed class PathsSettingsSection : ISettingsSection
             else
             {
                 _discError = "";
-                game.CdPath = disc;
-                ConfigManager.SaveGame();
-                NoticePopup.Show(Localization.T("common.restart_required"));
+                system.DiscPath = disc;
+                RestartRequired();
             }
         }
 
         if (_discError.Length > 0)
             ImGuiEx.TextWrappedColored(new Vector4(1f, 0.38f, 0.38f, 1f), _discError);
-
-        ImGui.Spacing();
-        ImGui.SeparatorText(Localization.T("settings.paths.memory_cards"));
-
-        Card("settings.paths.card_a", game.CardAEnabled, v => game.CardAEnabled = v, game.CardAPath,
-            p => game.CardAPath = p);
-        ImGui.Spacing();
-        Card("settings.paths.card_b", game.CardBEnabled, v => game.CardBEnabled = v, game.CardBPath,
-            p => game.CardBPath = p);
     }
 
-    private static void Card(string labelKey, bool enabled, Action<bool> setEnabled, string path,
-        Action<string> setPath)
+    private static void DrawMemoryCards()
     {
-        var on = enabled;
+        Card("settings.paths.card_a", Settings.System.CardA);
+        ImGui.Spacing();
+        Card("settings.paths.card_b", Settings.System.CardB);
+    }
+
+    private static void Card(string labelKey, MemoryCardSettings card)
+    {
+        var on = card.Enabled;
         if (ImGui.Checkbox(Localization.T(labelKey), ref on))
         {
-            setEnabled(on);
-            ConfigManager.SaveGame();
-            NoticePopup.Show(Localization.T("common.restart_required"));
+            card.Enabled = on;
+            RestartRequired();
         }
 
-        if (PathRow($"##{labelKey}", path, "sav", true, out var picked))
+        if (PathRow($"##{labelKey}", card.Path, "sav", true, out var picked))
         {
-            setPath(picked);
-            ConfigManager.SaveGame();
-            NoticePopup.Show(Localization.T("common.restart_required"));
+            card.Path = picked;
+            RestartRequired();
         }
+    }
+
+    private static void RestartRequired()
+    {
+        Settings.MarkDirty();
+        NoticePopup.Show(Localization.T("common.restart_required"));
     }
 
     private static bool PathRow(string id, string current, string filter, bool save, out string result)

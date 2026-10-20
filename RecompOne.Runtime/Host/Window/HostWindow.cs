@@ -91,7 +91,7 @@ public static class HostWindow
                     new APIVersion(4, 1))
             ];
 
-        var requested = Hle.GpuBackendFactory.Parse(ConfigManager.View.GpuBackend);
+        var requested = Hle.GpuBackendFactory.Parse(DisplayOptions.Backend);
         var core45 = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.Default,
             new APIVersion(4, 5));
         var core33 = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.Default,
@@ -109,8 +109,8 @@ public static class HostWindow
 
     public static void Initialize(string title)
     {
-        ConfigManager.Load();
-        Runtime.ApplyDefaults();
+        Settings.EnsureLoaded();
+        InterfaceLayout.Load();
         Pgxp.Pgxp.Load();
         Interp.Interp.Load();
 
@@ -121,15 +121,15 @@ public static class HostWindow
                 {
                     Size = new Vector2D<int>(1280, 720),
                     Title = title,
-                    VSync = ConfigManager.View.VSync,
+                    VSync = DisplayOptions.VSync,
                     UpdatesPerSecond = 0,
                     FramesPerSecond = 0,
-                    WindowState = ConfigManager.View.Fullscreen ? WindowState.Fullscreen : WindowState.Normal,
+                    WindowState = DisplayOptions.Fullscreen ? WindowState.Fullscreen : WindowState.Normal,
                     API = api
                 };
                 _window = Silk.NET.Windowing.Window.Create(options);
-                FrameClock.VSync = ConfigManager.View.VSync;
-                Interp.Interp.VSync = ConfigManager.View.VSync;
+                FrameClock.VSync = DisplayOptions.VSync;
+                Interp.Interp.VSync = DisplayOptions.VSync;
                 Interp.Interp.RefreshRate = QueryRefreshRate();
                 Console.WriteLine($"[Host] monitor refresh: {Interp.Interp.RefreshRate} hz");
                 _window.Load += OnLoad;
@@ -295,18 +295,7 @@ public static class HostWindow
         }
 
         InputManager.Poll();
-        if (InputManager.ConsumeTopBarToggle())
-        {
-            ConfigManager.View.HideTopBar = !ConfigManager.View.HideTopBar;
-            ConfigManager.SaveView(PanelManager.Panels);
-        }
-
-        if (InputManager.ConsumeFullscreenToggle())
-        {
-            ConfigManager.View.Fullscreen = !ConfigManager.View.Fullscreen;
-            SetFullscreen(ConfigManager.View.Fullscreen);
-            ConfigManager.SaveView(PanelManager.Panels);
-        }
+        HandleShortcuts();
 
         _window.DoRender();
         FrameClock.MarkPresent();
@@ -335,17 +324,18 @@ public static class HostWindow
         
         InputManager.Poll();
         
+        HandleShortcuts();
+    }
+
+    private static void HandleShortcuts()
+    {
         if (InputManager.ConsumeTopBarToggle())
-        {
-            ConfigManager.View.HideTopBar = !ConfigManager.View.HideTopBar;
-            ConfigManager.SaveView(PanelManager.Panels);
-        }
-        
+            InterfaceOptions.HideMenuBar.Value = !InterfaceOptions.HideMenuBar;
+
         if (InputManager.ConsumeFullscreenToggle())
         {
-            ConfigManager.View.Fullscreen = !ConfigManager.View.Fullscreen;
-            SetFullscreen(ConfigManager.View.Fullscreen);
-            ConfigManager.SaveView(PanelManager.Panels);
+            DisplayOptions.Fullscreen.Value = !DisplayOptions.Fullscreen;
+            SetFullscreen(DisplayOptions.Fullscreen);
         }
     }
     
@@ -434,7 +424,7 @@ public static class HostWindow
 
         while (true)
         {
-            var path = ConfigManager.Game.CdPath;
+            var path = Settings.System.DiscPath;
             if (!string.IsNullOrWhiteSpace(path) && File.Exists(path) && Runtime.ValidateDisc(path) == null)
                 return;
 
@@ -489,9 +479,9 @@ public static class HostWindow
         _vramTex = CreateTexture(_gl);
         _ramTex = CreateTexture(_gl);
 
-        Hle.GlVram.Scale = ConfigManager.View.RenderScale;
+        Hle.GlVram.Scale = DisplayOptions.RenderScale;
         _glBackend = (Hle.GlCore)Hle.GpuBackendFactory.Create(_gl,
-            Hle.GpuBackendFactory.Parse(ConfigManager.View.GpuBackend));
+            Hle.GpuBackendFactory.Parse(DisplayOptions.Backend));
         _glBackend.InitGl();
         Hle.GpuHle.Active = _glBackend.Ready;
         Hle.GpuHle.Backend = new Interp.InterpBackend(_glBackend);
@@ -520,15 +510,16 @@ public static class HostWindow
 
         MainMenuBar.RegisterBuiltins();
 
-        SettingsRegistry.Register(new InterfaceSettingsSection());
-        SettingsRegistry.Register(new InputSettingsSection());
-        SettingsRegistry.Register(new DisplaySettingsSection());
-        SettingsRegistry.Register(new PathsSettingsSection());
-        SettingsRegistry.Register(new AudioSettingsSection());
+        InterfacePage.Register();
+        LanguagePage.Register();
+        InputPage.Register();
+        DisplayPage.Register();
+        AudioPage.Register();
+        PathsPage.Register();
 
-        ConfigManager.ApplyViewToPanels(PanelManager.Panels);
+        InterfaceLayout.ApplyPanels(PanelManager.Panels);
 
-        var cdPath = ConfigManager.Game.CdPath;
+        var cdPath = Settings.System.DiscPath;
         if (string.IsNullOrWhiteSpace(cdPath) || !File.Exists(cdPath) || Runtime.ValidateDisc(cdPath) != null)
             PopupManager.Open<DiscPickerPopup>();
     }
@@ -541,7 +532,7 @@ public static class HostWindow
         var io = ImGui.GetIO();
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
         io.ConfigWindowsMoveFromTitleBarOnly = true;
-        io.FontGlobalScale = ConfigManager.View.UiScale;
+        io.FontGlobalScale = InterfaceOptions.Scale;
         unsafe
         {
             io.NativePtr->IniFilename = null;
@@ -551,10 +542,10 @@ public static class HostWindow
         Localization.Load();
         Theme.Load();
 
-        if (ConfigManager.ApplyImGuiLayout())
+        if (InterfaceLayout.ApplyImGui())
             _layoutPending = false;
 
-        if (ConfigManager.View.Fullscreen) SetAutoIconify(false);
+        if (DisplayOptions.Fullscreen) SetAutoIconify(false);
     }
 
     public static void SetVSync(bool on)
@@ -641,6 +632,7 @@ public static class HostWindow
         gl.Clear(ClearBufferMask.ColorBufferBit);
 
         Runtime.RamLog.Tick();
+        Settings.SaveIfDue();
         Memory.RamLogger.TrackReads =
             PanelManager.Get<RamMapPanel>()?.IsOpen == true ||
             PanelManager.Get<MemoryEditorPanel>()?.IsOpen == true;
@@ -656,7 +648,7 @@ public static class HostWindow
                     gpu.DisplayX, gpu.DisplayY,
                     gpu.DisplayWidth, gpu.DisplayHeight,
                     gpu.Display24Bit,
-                    wf.X, wf.Y);
+                    OutputPanel.ViewWidth, OutputPanel.ViewHeight);
                 if (tex != 0) OutputPanel.SetTexture(tex, tw, th, aspect);
                 gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
                 gl.Viewport(0, 0, (uint)wf.X, (uint)wf.Y);
@@ -676,7 +668,7 @@ public static class HostWindow
             if (_ramReady) FlushRamTexture(gl);
         }
 
-        if (!ConfigManager.View.HideTopBar)
+        if (!InterfaceOptions.HideMenuBar)
             MainMenuBar.Draw();
 
         DrawDockspace();
@@ -732,8 +724,8 @@ public static class HostWindow
     {
         if (_closed) return;
         _closed = true;
-        ConfigManager.SaveView(PanelManager.Panels);
-        ConfigManager.SaveGame();
+        InterfaceLayout.Save(PanelManager.Panels);
+        Settings.SaveIfDirty();
         PanelManager.Shutdown();
         PopupManager.Shutdown();
         _glBackend?.Dispose();

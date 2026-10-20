@@ -47,22 +47,22 @@ public static class Theme
 
     public static void Load()
     {
-        Accent = Parse(ConfigManager.View.Accent) ?? Accents[0].Color;
-        Background = Parse(ConfigManager.View.Background) ?? Backgrounds[0].Color;
+        Accent = Parse(InterfaceOptions.Accent.Value) ?? Accents[0].Color;
+        Background = Parse(InterfaceOptions.Background.Value) ?? Backgrounds[0].Color;
         Apply();
     }
 
     public static void SetAccent(Vector4 accent)
     {
         Accent = accent with { W = 1f };
-        ConfigManager.View.Accent = ToHex(Accent);
+        InterfaceOptions.Accent.Value = ToHex(Accent);
         Apply();
     }
 
     public static void SetBackground(Vector4 background)
     {
         Background = background with { W = 1f };
-        ConfigManager.View.Background = ToHex(Background);
+        InterfaceOptions.Background.Value = ToHex(Background);
         Apply();
     }
 
@@ -190,7 +190,7 @@ public static class Theme
         style.ScaleAllSizes(Scale);
     }
 
-    public static float Scale => HostWindow.DpiScale * ConfigManager.View.UiScale;
+    public static float Scale => HostWindow.DpiScale * InterfaceOptions.Scale.Value;
 
     public static float TitleBarHeight
     {

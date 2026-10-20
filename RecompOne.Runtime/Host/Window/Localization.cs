@@ -43,7 +43,7 @@ public static class Localization
     public static void Load()
     {
         EnsureBase();
-        SetLanguage(Config.ConfigManager.View.Language);
+        SetLanguage(Config.InterfaceOptions.Language.Value);
     }
 
     private static void EnsureBase()

@@ -71,8 +71,8 @@ internal static unsafe class Audio
     {
         if (spu == null) return;
         _spu = spu;
-        spu.VoiceGain = Config.ConfigManager.Game.SpuVolume;
-        spu.XaGain = Config.ConfigManager.Game.XaVolume;
+        spu.VoiceGain = Config.Settings.System.Audio.Spu;
+        spu.XaGain = Config.Settings.System.Audio.Xa;
     }
 
     public static void Detach()

@@ -19,11 +19,16 @@ public static class LibGpu
         var custom = GpuPrims.Any && GpuPrims.OtLength > 0;
         var otBase = GpuPrims.OtBase & Runtime.RamWordMask;
         var otEnd = otBase + (uint)GpuPrims.OtLength * 4u;
+        var forward = addr < otBase || addr >= otEnd || (int)((addr - otBase) >> 2) < GpuPrims.OtLength / 2;
+        var touched = false;
 
         for (var guard = 0; guard < 0x100000; guard++)
         {
             if (custom && addr >= otBase && addr < otEnd)
-                gpu.EmitCustomOrder((int)((addr - otBase) >> 2));
+            {
+                touched = true;
+                gpu.EmitCustomThrough((int)((addr - otBase) >> 2), forward);
+            }
 
             var header = m.ReadU32(addr);
             var count = (int)(header >> 24);
@@ -38,7 +43,9 @@ public static class LibGpu
             addr = next & Runtime.RamWordMask;
         }
 
-        if (custom) GpuPrims.Clear();
+        if (!touched) return;
+        gpu.EmitCustomRemaining(forward);
+        GpuPrims.Clear();
     }
 
     public static void DrawPrim(CpuContext c, IMemory m)

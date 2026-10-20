@@ -16,6 +16,7 @@ public sealed class XaOptions
     public double LoopStart;
     public double LoopEnd;
     public bool Extend;
+    public bool Direct;
     public int ExtendMaxMs = 600000;
     public ShortPolicy OnShorter = ShortPolicy.Silence;
     public int TailMs;

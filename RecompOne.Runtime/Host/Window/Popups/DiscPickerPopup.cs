@@ -15,7 +15,7 @@ public sealed class DiscPickerPopup : Popup
 
     protected override void OnOpened()
     {
-        _path = ConfigManager.Game.CdPath ?? "";
+        _path = Settings.System.DiscPath;
         _error = "";
     }
 
@@ -86,8 +86,8 @@ public sealed class DiscPickerPopup : Popup
             return;
         }
 
-        ConfigManager.Game.CdPath = path;
-        ConfigManager.SaveGame();
+        Settings.System.DiscPath = path;
+        Settings.Save();
         Close();
     }
 }

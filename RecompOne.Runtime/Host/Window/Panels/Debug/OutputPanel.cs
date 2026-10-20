@@ -20,6 +20,9 @@ internal sealed class OutputPanel : IPanel
 
     public static bool IsDocked { get; private set; }
 
+    public static int ViewWidth { get; private set; }
+    public static int ViewHeight { get; private set; }
+
     public static void SetTexture(uint id, int w, int h, float aspect = 0f)
     {
         (_texId, _texW, _texH, _aspect) = (id, w, h, aspect > 0f ? aspect : 4f / 3f);
@@ -45,6 +48,9 @@ internal sealed class OutputPanel : IPanel
         {
             var avail = ImGui.GetContentRegionAvail();
             var imageSize = FitAspect(new Vector2(_aspect, 1f), avail);
+            var scale = ImGui.GetIO().DisplayFramebufferScale;
+            ViewWidth = (int)MathF.Round(imageSize.X * scale.X);
+            ViewHeight = (int)MathF.Round(imageSize.Y * scale.Y);
             var offset = (avail - imageSize) * 0.5f;
             ImGui.SetCursorPos(ImGui.GetCursorPos() + offset);
             ImGui.Image((nint)_texId, imageSize);

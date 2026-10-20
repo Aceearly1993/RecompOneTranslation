@@ -64,6 +64,7 @@ public static class LibCd
 
     internal static readonly object DiscLock = new();
     private static readonly object _posGate = new();
+    private static readonly object _streamGate = new();
 
     private static Thread? _xaThread;
     private static volatile bool _xaRun;
@@ -609,7 +610,8 @@ public static class LibCd
                 _xaWake.Reset();
                 _xaWake.Wait(8);
             }
-            else if (_xaActive && !LibDs.Active && (_mode & 0x40) != 0 && Runtime.Cd != null)
+            else if (_xaActive && !LibDs.Active && !LibCdStream.Streaming && (_mode & 0x40) != 0 &&
+                     Runtime.Cd != null)
             {
                 PumpXa();
                 _xaWake.Reset();
@@ -687,9 +689,9 @@ public static class LibCd
     private static void PumpXa()
     {
         if (Runtime.Cd == null) return;
+        if (_xaActive && Assets.Xa.XaRouter.PumpDirect()) return;
         const int MinBuffer = 4096;
         const int MaxScan = 32;
-        var useFilter = (_mode & 0x08) != 0;
         var scanned = 0;
 
         var now = _xaClock.Elapsed.TotalMilliseconds;
@@ -697,53 +699,63 @@ public static class LibCd
         _xaLastMs = now;
         if (_xaCredit > XaBurst) _xaCredit = XaBurst;
 
-        while (_xaActive && _xaCredit >= 1.0 && XaAudio.BufferedSamples < MinBuffer && scanned < MaxScan)
+        while (true)
         {
-            var lba = CurrentLba;
-            if (lba < 0) break;
-            if (lba >= Runtime.Cd.Fs.DataSectors)
+            lock (_streamGate)
             {
-                _xaActive = false;
-                break;
+                if (!_xaActive || (_mode & 0x40) == 0 || _xaCredit < 1.0 ||
+                    XaAudio.BufferedSamples >= MinBuffer || scanned >= MaxScan) break;
+                if (!PumpXaSector((_mode & 0x08) != 0)) break;
+                scanned++;
             }
-
-            _xaCredit -= 1.0;
-            byte[] sec;
-            lock (DiscLock)
-            {
-                sec = Runtime.Cd.ReadSectorData(lba, 2336);
-            }
-
-            NoteSectorHeader(lba, sec);
-            AdvancePos(1);
-            scanned++;
-            var audio = (sec[2] & 0x04) != 0;
-            if (!audio)
-            {
-                QueueDataIrq(lba);
-                CarrierMiss();
-                continue;
-            }
-
-            if (!useFilter && _xaFirstSector && sec[1] != 0xFF)
-            {
-                _filterFile = sec[0];
-                _filterChannel = sec[1];
-                _xaFirstSector = false;
-            }
-
-            if (sec[1] == 0xFF || sec[0] != _filterFile || sec[1] != _filterChannel)
-            {
-                CarrierMiss();
-                continue;
-            }
-
-            _xaFirstSector = false;
-            _carrierMiss = 0;
-            Assets.Xa.XaRouter.Sector(lba, sec, false);
         }
 
         Assets.Xa.XaRouter.PumpTail();
+    }
+
+    private static bool PumpXaSector(bool useFilter)
+    {
+        var lba = CurrentLba;
+        if (lba < 0) return false;
+        if (lba >= Runtime.Cd!.Fs.DataSectors)
+        {
+            _xaActive = false;
+            return false;
+        }
+
+        _xaCredit -= 1.0;
+        byte[] sec;
+        lock (DiscLock)
+        {
+            sec = Runtime.Cd.ReadSectorData(lba, 2336);
+        }
+
+        NoteSectorHeader(lba, sec);
+        AdvancePos(1);
+        if ((sec[2] & 0x04) == 0)
+        {
+            QueueDataIrq(lba);
+            CarrierMiss();
+            return true;
+        }
+
+        if (!useFilter && _xaFirstSector && sec[1] != 0xFF)
+        {
+            _filterFile = sec[0];
+            _filterChannel = sec[1];
+            _xaFirstSector = false;
+        }
+
+        if (sec[1] == 0xFF || sec[0] != _filterFile || sec[1] != _filterChannel)
+        {
+            CarrierMiss();
+            return true;
+        }
+
+        _xaFirstSector = false;
+        _carrierMiss = 0;
+        Assets.Xa.XaRouter.Sector(lba, sec, false);
+        return true;
     }
 
     private static bool _xaFirstSector;
@@ -1073,6 +1085,14 @@ public static class LibCd
 
     private static int ExecCommand(IMemory m, byte com, uint param, uint result)
     {
+        lock (_streamGate)
+        {
+            return ExecCommandLocked(m, com, param, result);
+        }
+    }
+
+    private static int ExecCommandLocked(IMemory m, byte com, uint param, uint result)
+    {
         _com = com;
         _lastIntr = Complete;
         Log.Sdk($"Cd cmd 0x{com:X2} param=0x{param:X8} pos={_pos[0]:X2}:{_pos[1]:X2}:{_pos[2]:X2}");
@@ -1139,11 +1159,25 @@ public static class LibCd
                     return DiskError;
                 }
 
+                _status = (byte)(StatMotor | StatRead);
+                if (LibCdStream.Streaming)
+                {
+                    _xaActive = false;
+                    _readActive = false;
+                    _readyOnlyRead = false;
+                    lock (_dataIrqQueue)
+                    {
+                        _dataIrqQueue.Clear();
+                    }
+
+                    LibCdStream.OnReadStream(CurrentLba);
+                    break;
+                }
+
                 _xaActive = true;
                 _xaFirstSector = true;
                 _readActive = (_mode & 0x40) == 0;
                 _readyOnlyRead = _cbData == 0;
-                _status = (byte)(StatMotor | StatRead);
                 LibCdStream.OnReadStream(CurrentLba);
                 EnsureXaThread();
                 break;
@@ -1222,6 +1256,7 @@ public static class LibCd
             case Pause:
             case Stop:
             case Init:
+                Assets.Xa.XaRouter.StopDirect();
                 lock (_dataIrqQueue)
                 {
                     _dataIrqQueue.Clear();

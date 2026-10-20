@@ -10,6 +10,12 @@ public static class PopupManager
         if (!_registered.Contains(popup)) _registered.Add(popup);
     }
 
+    public static void Unregister(Popup popup)
+    {
+        popup.Close();
+        _registered.Remove(popup);
+    }
+
     public static T? Get<T>() where T : Popup
     {
         foreach (var popup in _registered)

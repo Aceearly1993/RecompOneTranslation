@@ -1,5 +1,9 @@
 namespace RecompOne.Runtime.Hle;
 
+public readonly record struct CapturedImage(int Margin, int Width, int Height);
+
+public sealed record CaptureOverlay(byte[] Rgba, int Width, int Height, int X, int Y, bool Behind = true);
+
 /// <summary>
 /// GPU BACKEND
 /// </summary>
@@ -21,6 +25,14 @@ public interface IGpuBackend
 
     //add other stuff
     int RegisterImage(ReadOnlySpan<byte> rgba, int width, int height);
+    int ReserveImage() => -1;
+    void CaptureTarget(int image, IReadOnlyList<CaptureOverlay> overlays) { }
+    bool TryGetCapture(int image, out CapturedImage capture)
+    {
+        capture = default;
+        return false;
+    }
+    void ReleaseImage(int image) { }
 
     // these touch gl
     void BeginScene() { }

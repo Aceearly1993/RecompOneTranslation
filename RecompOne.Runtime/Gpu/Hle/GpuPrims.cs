@@ -71,7 +71,9 @@ public static class GpuPrims
 
     private static readonly int[] _heads = NewLinks();
     private static readonly int[] _tails = NewLinks();
+    private static readonly bool[] _emitted = new bool[MaxOrder];
     private static readonly List<int> _used = [];
+    private static bool _sorted = true;
 
     private static int[] NewLinks()
     {
@@ -87,6 +89,7 @@ public static class GpuPrims
 
     public static void SetOrderingTable(uint baseAddr, int length)
     {
+        if (_n != 0 && (baseAddr != OtBase || length != OtLength)) Clear();
         OtBase = baseAddr;
         OtLength = length;
     }
@@ -96,15 +99,42 @@ public static class GpuPrims
         return GpuHle.Backend?.RegisterImage(rgba, width, height) ?? -1;
     }
 
+    private static readonly Dictionary<int, IReadOnlyList<CaptureOverlay>> _overlays = [];
+
+    public static int Capture(int order, params CaptureOverlay[] overlays)
+    {
+        var image = GpuHle.Backend?.ReserveImage() ?? -1;
+        if (image < 0) return -1;
+        var i = Alloc(order, image, false, 0, true, false);
+        if (i < 0) return image;
+        _entries[i].Count = 0;
+        _overlays[image] = overlays;
+        return image;
+    }
+
+    public static bool TryGetCapture(int image, out CapturedImage capture)
+    {
+        capture = default;
+        return GpuHle.Backend?.TryGetCapture(image, out capture) ?? false;
+    }
+
+    public static void ReleaseImage(int image)
+    {
+        if (image >= 0) GpuHle.Backend?.ReleaseImage(image);
+    }
+
     public static void Clear()
     {
         for (var i = 0; i < _used.Count; i++)
         {
             _heads[_used[i]] = -1;
             _tails[_used[i]] = -1;
+            _emitted[_used[i]] = false;
         }
 
         _used.Clear();
+        _overlays.Clear();
+        _sorted = true;
         _n = 0;
     }
 
@@ -167,6 +197,7 @@ public static class GpuPrims
         {
             _heads[order] = idx;
             _used.Add(order);
+            _sorted = false;
         }
         else
         {
@@ -178,12 +209,50 @@ public static class GpuPrims
         return idx;
     }
 
-    internal static void Emit(int order, Gpu gpu)
+    internal static void EmitThrough(int order, bool forward, Gpu gpu)
+    {
+        if (!_sorted)
+        {
+            _used.Sort();
+            _sorted = true;
+        }
+
+        if (forward)
+        {
+            for (var i = 0; i < _used.Count && _used[i] <= order; i++)
+                EmitOnce(_used[i], gpu);
+        }
+        else
+        {
+            for (var i = _used.Count - 1; i >= 0 && _used[i] >= order; i--)
+                EmitOnce(_used[i], gpu);
+        }
+    }
+
+    internal static void EmitRemaining(bool forward, Gpu gpu)
+    {
+        EmitThrough(forward ? MaxOrder - 1 : 0, forward, gpu);
+    }
+
+    private static void EmitOnce(int order, Gpu gpu)
+    {
+        if (_emitted[order]) return;
+        _emitted[order] = true;
+        Emit(order, gpu);
+    }
+
+    private static void Emit(int order, Gpu gpu)
     {
         if ((uint)order >= MaxOrder) return;
         for (var i = _heads[order]; i >= 0; i = _entries[i].Next)
         {
             ref var e = ref _entries[i];
+            if (e.Count == 0)
+            {
+                gpu.EmitCapture(e.Image, _overlays.Remove(e.Image, out var overlays) ? overlays : []);
+                continue;
+            }
+
             gpu.EmitPrim(e.Count, in e.V0, in e.V1, in e.V2, in e.V3,
                 e.UseImage, e.Image, e.SemiTrans, e.Raw, e.Gouraud, e.Blend, e.QuantizedAlpha);
         }

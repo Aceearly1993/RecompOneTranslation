@@ -21,7 +21,9 @@ public sealed class StartupNoticePopup : Popup
         _ackKey = string.IsNullOrEmpty(ackKey) ? "StartupNoticeAck" : ackKey;
     }
 
-    public static bool NeedsAck => !string.IsNullOrEmpty(_message) && !ConfigManager.View.GetBool(_ackKey);
+    private static string AckSetting => $"notices.{_ackKey}";
+
+    public static bool NeedsAck => !string.IsNullOrEmpty(_message) && !Settings.Get(AckSetting, false);
 
     protected internal override void Update()
     {
@@ -38,8 +40,7 @@ public sealed class StartupNoticePopup : Popup
 
         if (ImGui.Button(Localization.T("common.understood"), new Vector2(-1f, 0f)))
         {
-            ConfigManager.View.SetBool(_ackKey, true);
-            ConfigManager.SaveView(PanelManager.Panels);
+            Settings.Set(AckSetting, true);
             Close();
         }
     }

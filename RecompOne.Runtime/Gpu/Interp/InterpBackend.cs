@@ -222,7 +222,7 @@ public sealed class InterpBackend : IGpuBackend
     
     public void ReadVram(int x, int y, int w, int h, Span<ushort> px)
     {
-        Settle();
+        SettlePending();
         
         _inner.ReadVram(x, y, w, h, px);
     }
@@ -230,6 +230,35 @@ public sealed class InterpBackend : IGpuBackend
     public int RegisterImage(ReadOnlySpan<byte> rgba, int width, int height)
     {
         return _inner.RegisterImage(rgba, width, height);
+    }
+
+    private readonly Dictionary<int, IReadOnlyList<CaptureOverlay>> _captureOverlays = [];
+
+    public int ReserveImage()
+    {
+        return _inner.ReserveImage();
+    }
+
+    public void CaptureTarget(int image, IReadOnlyList<CaptureOverlay> overlays)
+    {
+        if (!_active)
+        {
+            _inner.CaptureTarget(image, overlays);
+            return;
+        }
+
+        _captureOverlays[image] = overlays;
+        _recording.Add(GraphOp.Capture, image);
+    }
+
+    public bool TryGetCapture(int image, out CapturedImage capture)
+    {
+        return _inner.TryGetCapture(image, out capture);
+    }
+
+    public void ReleaseImage(int image)
+    {
+        _inner.ReleaseImage(image);
     }
     
     public void Flush()
@@ -437,6 +466,40 @@ public sealed class InterpBackend : IGpuBackend
         }
     }
     
+    private void SettlePending()
+    {
+        if (!_active) return;
+        
+        lock (_gate)
+        {
+            if (!_current.IsEmpty && _lastWeight < 1f) Replay(_current, null, 1f);
+            
+            while (_ready.Count > 0)
+            {
+                var frame = _ready.Dequeue();
+                Replay(frame, null, 1f);
+                Recycle(_previous);
+                _previous = _current;
+                _current = frame;
+            }
+            
+            if (!_recording.IsEmpty)
+            {
+                Replay(_recording, null, 1f);
+                _recording.Clear();
+                _recording.Interpolatable = false;
+                _groups.Clear();
+                _materials.Clear();
+            }
+            
+            _current.Clear();
+            _current.Interpolatable = false;
+            _lastWeight = 1f;
+            _interpolating = false;
+            _resync = true;
+        }
+    }
+    
     private void Replay(FrameGraph graph, FrameGraph? previous, float weight)
     {
         _inner.BeginScene();
@@ -486,6 +549,9 @@ public sealed class InterpBackend : IGpuBackend
                     _inner.FillDisplayMargins(margin.X, margin.Y, margin.W, margin.H, margin.Color);
                     break;
                 }
+                case GraphOp.Capture:
+                    _inner.CaptureTarget(slot, _captureOverlays.GetValueOrDefault(slot) ?? []);
+                    break;
                 case GraphOp.CopyVram:
                 {
                     ref var copy = ref copies[slot];

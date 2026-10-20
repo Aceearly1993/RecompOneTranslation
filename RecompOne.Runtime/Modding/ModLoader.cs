@@ -77,6 +77,63 @@ public static class ModLoader
     private static FileSystemWatcher? _watcher;
     private static int _dirty;
     private static DateTime _dirtyAt;
+    private static readonly Dictionary<string, ModEntry> _scriptMods = new(StringComparer.OrdinalIgnoreCase);
+
+    public static bool LoadScripts(string id, string sourcePath)
+    {
+        var owner = ScriptOwner(id);
+        lock (_mods)
+        {
+            UnloadScriptsInternal(owner);
+            if (string.IsNullOrWhiteSpace(sourcePath) || !Directory.Exists(sourcePath)) return false;
+
+            var info = new ModInfo
+            {
+                Id = owner,
+                Name = owner,
+                Version = "1",
+                SourcePath = sourcePath
+            };
+            var mod = new ModEntry
+            {
+                Info = info,
+                Enabled = true,
+                IsZip = false,
+                Sources = ReadSources(sourcePath, false)
+            };
+            if (mod.Sources.Count == 0)
+            {
+                SafeCommit();
+                return false;
+            }
+
+            LoadEntry(mod);
+            if (mod.Loaded) _scriptMods[owner] = mod;
+            SafeCommit();
+            return mod.Loaded;
+        }
+    }
+
+    public static void UnloadScripts(string id)
+    {
+        lock (_mods)
+        {
+            UnloadScriptsInternal(ScriptOwner(id));
+            SafeCommit();
+        }
+    }
+
+    private static string ScriptOwner(string id)
+    {
+        var safeId = new string(id.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+        return $"script-{(safeId.Length == 0 ? "default" : safeId)}";
+    }
+
+    private static void UnloadScriptsInternal(string owner)
+    {
+        if (!_scriptMods.Remove(owner, out var mod)) return;
+        if (mod.Loaded) UnloadEntry(mod);
+    }
 
     public static void LoadAll(string? root = null)
     {
@@ -95,7 +152,7 @@ public static class ModLoader
             _mods.AddRange(discovered);
         }
 
-        foreach (var e in discovered) e.Enabled = IsEnabled(e.Info.Id);
+        foreach (var e in discovered) e.Enabled = IsEnabled(e.Info);
 
         StartWatching();
 
@@ -202,7 +259,7 @@ public static class ModLoader
             foreach (var entry in found)
             {
                 if (known.Contains(entry.Info.Id)) continue;
-                entry.Enabled = IsEnabled(entry.Info.Id);
+                entry.Enabled = IsEnabled(entry.Info);
                 _mods.Add(entry);
                 changed = true;
                 Console.WriteLine($"[Mods] got {entry.Info.Name}");
@@ -270,15 +327,14 @@ public static class ModLoader
         }
     }
 
-    private static bool IsEnabled(string id)
+    private static bool IsEnabled(ModInfo info)
     {
-        return Runtime.View.GetBool($"mods.{id}.enabled", false);
+        return Config.Settings.Get($"mods.{info.Id}.enabled", info.DefaultEnabled);
     }
 
     private static void SaveEnabled(string id, bool enabled)
     {
-        Runtime.View.SetBool($"mods.{id}.enabled", enabled);
-        Runtime.SaveView();
+        Config.Settings.Set($"mods.{id}.enabled", enabled);
     }
 
     private const int MaxDepth = 4;

@@ -466,6 +466,22 @@
       "zh-CN": "没有可用的设置",
       "fr-FR": "Aucun réglage disponible"
     },
+    "settings.language": {
+      "en": "Language",
+      "pt-BR": "Idioma",
+      "es-419": "Idioma",
+      "ja-JP": "言語",
+      "zh-CN": "语言",
+      "fr-FR": "Langue"
+    },
+    "settings.language.interface": {
+      "en": "Interface",
+      "pt-BR": "Interface",
+      "es-419": "Interfaz",
+      "ja-JP": "インターフェース",
+      "zh-CN": "界面",
+      "fr-FR": "Interface"
+    },
     "settings.interface": {
       "en": "Interface",
       "pt-BR": "Interface",

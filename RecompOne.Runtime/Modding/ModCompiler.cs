@@ -12,6 +12,9 @@ public static class ModCompiler
 {
     private static List<MetadataReference>? _references;
 
+    private static readonly string[] Preloaded =
+        ["System.Net.Http", "System.Net.Primitives", "System.IO.Compression", "System.Text.Json"];
+
     public static byte[]? Compile(string modId, IReadOnlyList<(string Path, string Text)> sources)
     {
         var parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest);
@@ -38,7 +41,17 @@ public static class ModCompiler
     {
         if (_references != null) return _references;
 
+        foreach (var preload in Preloaded)
+            try
+            {
+                Assembly.Load(preload);
+            }
+            catch (Exception)
+            {
+            }
+
         var refs = new List<MetadataReference>();
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
         {
             if (a.IsDynamic) continue;
@@ -46,6 +59,7 @@ public static class ModCompiler
             if (!string.IsNullOrEmpty(a.Location))
             {
                 refs.Add(MetadataReference.CreateFromFile(a.Location));
+                names.Add(Path.GetFileNameWithoutExtension(a.Location));
                 continue;
             }
 
@@ -54,6 +68,22 @@ public static class ModCompiler
                 refs.Add(
                     AssemblyMetadata.Create(ModuleMetadata.CreateFromMetadata((IntPtr)blob, length)).GetReference());
         }
+
+        if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string platform)
+            foreach (var path in platform.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var name = Path.GetFileNameWithoutExtension(path);
+                if (!name.StartsWith("System.", StringComparison.Ordinal) && name is not ("System" or "netstandard" or "mscorlib"))
+                    continue;
+                if (!names.Add(name)) continue;
+                try
+                {
+                    refs.Add(MetadataReference.CreateFromFile(path));
+                }
+                catch (Exception)
+                {
+                }
+            }
 
         _references = refs;
         return _references;

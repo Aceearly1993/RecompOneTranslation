@@ -44,8 +44,21 @@ public sealed partial class Gpu
         if (count >= 4) be.DrawTri(v1, v2, CustomVertex(d), flags);
     }
 
-    public void EmitCustomOrder(int order)
+    public void EmitCapture(int image, IReadOnlyList<CaptureOverlay> overlays)
     {
-        GpuPrims.Emit(order, this);
+        if (!HleOn) return;
+        var be = GpuHle.Backend!;
+        be.SetDrawEnv(CurEnv());
+        be.CaptureTarget(image, overlays);
+    }
+
+    public void EmitCustomThrough(int order, bool forward)
+    {
+        GpuPrims.EmitThrough(order, forward, this);
+    }
+
+    public void EmitCustomRemaining(bool forward)
+    {
+        GpuPrims.EmitRemaining(forward, this);
     }
 }
