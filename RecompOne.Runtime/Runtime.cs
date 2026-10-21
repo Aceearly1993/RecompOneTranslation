@@ -320,8 +320,8 @@ public static class Runtime
             Bios.BiosB.RefreshPad(Mem);
             Sdk.LibPad.Refresh(Mem);
         } //is this correct?
-
-        Interrupts.Raise(0);
+        
+        // Interrupts.Raise(0);
     }
 
     public static void DispatchIrq(int irq)
